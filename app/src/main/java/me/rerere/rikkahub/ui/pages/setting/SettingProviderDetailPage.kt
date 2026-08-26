@@ -70,6 +70,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -139,6 +140,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val provider = settings.providers.find { it.id == id } ?: return
+    var draftProvider by remember(provider) { mutableStateOf(provider) }
     val pager = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -162,6 +164,13 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
         )
         vm.updateSettings(newSettings)
         navController.popBackStack()
+    }
+
+    // Keep edits alive while switching between the configuration and model tabs.
+    LaunchedEffect(pager.currentPage, draftProvider) {
+        if (pager.currentPage == 1 && draftProvider != provider) {
+            onEdit(draftProvider)
+        }
     }
 
     Scaffold(
@@ -230,9 +239,9 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
             when (page) {
                 0 -> {
                     SettingProviderConfigPage(
-                        provider = provider,
+                        provider = draftProvider,
                         onEdit = {
-                            onEdit(it)
+                            draftProvider = it
                             toaster.show(
                                 context.getString(R.string.setting_provider_page_save_success),
                                 type = ToastType.Success
@@ -246,8 +255,11 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
 
                 1 -> {
                     SettingProviderModelPage(
-                        provider = provider,
-                        onEdit = onEdit
+                        provider = draftProvider,
+                        onEdit = {
+                            draftProvider = it
+                            onEdit(it)
+                        }
                     )
                 }
             }
