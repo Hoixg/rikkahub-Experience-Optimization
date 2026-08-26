@@ -16,21 +16,29 @@ class ProotShellRunner(
     private val patcher: RootfsPatcher = RootfsPatcher(),
 ) : WorkspaceShellRunner {
     override fun execute(context: WorkspaceShellContext): WorkspaceCommandResult {
-        return start(context).readResult(context.timeoutMillis, context.stdin)
-    }
-
-    override fun start(context: WorkspaceShellContext): Process {
         if (!context.linuxDir.hasUsableRootfs()) {
-            throw IllegalStateException("Rootfs is not installed")
+            return WorkspaceCommandResult(
+                exitCode = 127,
+                stdout = "",
+                stderr = "Rootfs is not installed",
+            )
         }
 
         val proot = File(nativeLibraryDir, PROOT_EXEC)
         val loader = File(nativeLibraryDir, PROOT_LOADER)
         if (!proot.isFile) {
-            throw IllegalStateException("proot executable not found: ${proot.absolutePath}")
+            return WorkspaceCommandResult(
+                exitCode = 127,
+                stdout = "",
+                stderr = "proot executable not found: ${proot.absolutePath}",
+            )
         }
         if (!loader.isFile) {
-            throw IllegalStateException("proot loader not found: ${loader.absolutePath}")
+            return WorkspaceCommandResult(
+                exitCode = 127,
+                stdout = "",
+                stderr = "proot loader not found: ${loader.absolutePath}",
+            )
         }
 
         context.tempDir.mkdirs()
@@ -45,7 +53,7 @@ class ProotShellRunner(
             }
             .start()
 
-        return process
+        return process.readResult(context.timeoutMillis, context.stdin)
     }
 
     private fun buildCommand(

@@ -264,80 +264,77 @@ private fun SettingProviderConfigPage(
     var internalProvider by remember(provider) { mutableStateOf(provider) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            Surface(
-                tonalElevation = 3.dp,
-                color = MaterialTheme.colorScheme.surface,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .imePadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    ProviderConnectionTester(internalProvider = internalProvider)
-                    IconButton(
-                        onClick = { showDeleteDialog = true },
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Delete01,
-                            contentDescription = stringResource(R.string.delete),
-                            tint = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    IconButton(
-                        onClick = { internalProvider = internalProvider.resetBaseUrlToDefault() },
-                        enabled = !internalProvider.isUsingDefaultBaseUrl(),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.Refresh03,
-                            contentDescription = stringResource(R.string.setting_model_page_reset_to_default),
-                        )
-                    }
-                    Button(
-                        onClick = { onEdit(internalProvider) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(stringResource(R.string.setting_provider_page_save))
-                    }
-                }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        ProviderConfigure(
+            provider = internalProvider,
+            onEdit = {
+                internalProvider = it
             }
-        },
-    ) { contentPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(contentPadding)
-                .consumeWindowInsets(contentPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            ProviderConfigure(
+        )
+
+        if (internalProvider is ProviderSetting.OpenAI) {
+            SettingProviderBalanceOption(
                 provider = internalProvider,
-                onEdit = { internalProvider = it },
+                balanceOption = internalProvider.balanceOption,
+                onEdit = { internalProvider = internalProvider.copyProvider(balanceOption = it) }
+            )
+            ProviderBalanceText(providerSetting = provider, style = MaterialTheme.typography.labelSmall)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ProviderConnectionTester(
+                internalProvider = internalProvider,
             )
 
-            if (internalProvider is ProviderSetting.OpenAI) {
-                SettingProviderBalanceOption(
-                    provider = internalProvider,
-                    balanceOption = internalProvider.balanceOption,
-                    onEdit = { internalProvider = internalProvider.copyProvider(balanceOption = it) }
-                )
-                ProviderBalanceText(providerSetting = provider, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.weight(1f))
+
+            IconButton(
+                onClick = {
+                    showDeleteDialog = true
+                },
+            ) {
+                Icon(HugeIcons.Delete01, null)
             }
 
-            if (provider is ProviderSetting.OpenAI && provider.baseUrl.contains("siliconflow.cn")) {
-                SiliconFlowPowerByIcon(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(vertical = 16.dp)
+            IconButton(
+                onClick = {
+                    internalProvider = internalProvider.resetBaseUrlToDefault()
+                },
+                enabled = !internalProvider.isUsingDefaultBaseUrl(),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Refresh03,
+                    contentDescription = stringResource(R.string.setting_model_page_reset_to_default)
                 )
             }
+
+            Button(
+                onClick = {
+                    onEdit(internalProvider)
+                }
+            ) {
+                Text(stringResource(R.string.setting_provider_page_save))
+            }
+        }
+
+        // 硅基流动图标
+        if (provider is ProviderSetting.OpenAI && provider.baseUrl.contains("siliconflow.cn")) {
+            SiliconFlowPowerByIcon(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(vertical = 16.dp)
+            )
         }
     }
 

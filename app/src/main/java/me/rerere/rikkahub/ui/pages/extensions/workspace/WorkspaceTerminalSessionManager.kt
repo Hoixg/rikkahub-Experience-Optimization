@@ -10,12 +10,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
@@ -47,14 +47,6 @@ class WorkspaceTerminalSessionManager internal constructor(
         launchCreateTab(root = root, onlyIfEmpty = true)
     }
 
-    internal fun createTab(root: String) {
-        launchCreateTab(root = root, onlyIfEmpty = false)
-    }
-
-    /**
-     * Returns an existing UI tab, or creates one through the same path used by the terminal page.
-     * Agent calls therefore operate on the exact PTY already visible to the user.
-     */
     internal suspend fun ensureAgentSession(
         root: String,
         tabId: Long? = null,
@@ -65,8 +57,7 @@ class WorkspaceTerminalSessionManager internal constructor(
             current.tabs.firstOrNull { it.id == tabId }
                 ?: error("Terminal session not found: $tabId")
         } else {
-            current.tabs.firstOrNull { it.id == current.selectedTabId }
-                ?: current.tabs.firstOrNull()
+            current.tabs.firstOrNull { it.id == current.selectedTabId } ?: current.tabs.firstOrNull()
         }
         if (existing != null && !createNewTab) return@withContext existing.toAgentSession()
 
@@ -78,7 +69,7 @@ class WorkspaceTerminalSessionManager internal constructor(
                 .first { state ->
                     state.tabs.any { it.id !in previousIds } ||
                         state.readiness == WorkspaceTerminalReadiness.NotInstalled ||
-                        (!state.isCreating && !state.isCreating && state.tabs.isEmpty())
+                        (!state.isCreating && state.readiness != WorkspaceTerminalReadiness.Loading && state.tabs.isEmpty())
                 }
         }
         result.tabs.firstOrNull { it.id !in previousIds }?.toAgentSession()
@@ -86,9 +77,7 @@ class WorkspaceTerminalSessionManager internal constructor(
     }
 
     internal suspend fun listAgentSessions(root: String): List<WorkspaceTerminalAgentSession> =
-        withContext(Dispatchers.Main.immediate) {
-            currentState(root).tabs.map { it.toAgentSession() }
-        }
+        withContext(Dispatchers.Main.immediate) { currentState(root).tabs.map { it.toAgentSession() } }
 
     internal suspend fun sendAgentInput(
         root: String,
@@ -122,6 +111,10 @@ class WorkspaceTerminalSessionManager internal constructor(
             closeTab(root, tabId)
             true
         }
+
+    internal fun createTab(root: String) {
+        launchCreateTab(root = root, onlyIfEmpty = false)
+    }
 
     internal fun selectTab(root: String, tabId: Long) {
         updateState(root) { state ->
@@ -245,12 +238,8 @@ class WorkspaceTerminalSessionManager internal constructor(
             return@withContext
         }
 
-        // Agent calls can arrive before TerminalView has attached and supplied a size.
-        // Give the emulator a stable initial buffer; TerminalView will resize it later.
         runCatching { session.initializeEmulator(DEFAULT_AGENT_COLUMNS, DEFAULT_AGENT_ROWS) }
-            .onFailure { error ->
-                Log.w(TAG, "Failed to initialize terminal emulator for workspace $root", error)
-            }
+            .onFailure { error -> Log.w(TAG, "Failed to initialize terminal emulator for workspace $root", error) }
 
         val tab = WorkspaceTerminalTab(
             id = tabId,
@@ -339,11 +328,7 @@ internal data class WorkspaceTerminalScreen(
 )
 
 private fun WorkspaceTerminalTab.toAgentSession() = WorkspaceTerminalAgentSession(
-    id = id,
-    number = number,
-    cwd = session.getCwd().orEmpty(),
-    running = session.isRunning,
-    finished = finished,
+    id = id, number = number, cwd = session.getCwd().orEmpty(), running = session.isRunning, finished = finished,
 )
 
 private fun WorkspaceTerminalTab.toAgentScreen(): WorkspaceTerminalScreen {
@@ -352,10 +337,8 @@ private fun WorkspaceTerminalTab.toAgentScreen(): WorkspaceTerminalScreen {
     return WorkspaceTerminalScreen(
         session = toAgentSession(),
         screen = buffer.getTranscriptTextWithFullLinesJoined().takeLast(MAX_AGENT_SCREEN_CHARS),
-        columns = emulator.mColumns,
-        rows = emulator.mRows,
-        cursorRow = emulator.getCursorRow(),
-        cursorColumn = emulator.getCursorCol(),
+        columns = emulator.mColumns, rows = emulator.mRows,
+        cursorRow = emulator.getCursorRow(), cursorColumn = emulator.getCursorCol(),
     )
 }
 
@@ -380,9 +363,7 @@ private fun String.toTerminalInput(): String = when (trim().lowercase()) {
     "c-z" -> "\u001A"
     else -> if (startsWith("c-") && length == 3) {
         (this[2].uppercaseChar().code and 0x1F).toChar().toString()
-    } else {
-        this
-    }
+    } else this
 }
 
 private const val MAX_AGENT_SCREEN_CHARS = 64 * 1024
