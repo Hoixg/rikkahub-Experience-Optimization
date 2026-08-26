@@ -236,6 +236,11 @@ private fun AssistantLocalToolContent(
                 supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_archive_desc)) },
                 trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.Archive), onCheckedChange = { toggleLocalTool(LocalToolOption.Archive, it) }) }
             )
+            item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_termux_title)) },
+                supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_termux_desc)) },
+                trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.Termux), onCheckedChange = { toggleLocalTool(LocalToolOption.Termux, it) }) }
+            )
         }
     }
 }

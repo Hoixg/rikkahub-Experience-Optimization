@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -16,6 +20,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.SwipeToDismissBoxDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -23,6 +31,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.dokar.sonner.ToastType
 import me.rerere.ai.provider.ClaudePromptCacheTtl
 import me.rerere.ai.provider.ApiKeyInfo
@@ -224,7 +234,6 @@ private fun ApiKeyEditor(
         is ProviderSetting.Google -> provider.selectedApiKeyIndex
         is ProviderSetting.Claude -> provider.selectedApiKeyIndex
     }.coerceIn(0, (entries.size - 1).coerceAtLeast(0))
-    var showKeys by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(false) }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var draftKey by remember { mutableStateOf("") }
@@ -260,12 +269,6 @@ private fun ApiKeyEditor(
                 style = MaterialTheme.typography.labelLarge,
             )
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { showKeys = !showKeys }) {
-                Icon(
-                    if (showKeys) HugeIcons.ViewOff else HugeIcons.View,
-                    contentDescription = stringResource(R.string.setting_provider_page_api_key_visibility),
-                )
-            }
             IconButton(onClick = { openEditor(null) }) {
                 Icon(
                     HugeIcons.Add01,
@@ -281,13 +284,47 @@ private fun ApiKeyEditor(
             )
         }
         entries.forEachIndexed { index, entry ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onEdit(provider.withApiKeyInfos(entries, index)) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            val positionThreshold = SwipeToDismissBoxDefaults.positionalThreshold
+            val dismissState = remember(index, entry.key) {
+                SwipeToDismissBoxState(
+                    initialValue = SwipeToDismissBoxValue.Settled,
+                    positionalThreshold = positionThreshold,
+                )
+            }
+            LaunchedEffect(dismissState.currentValue) {
+                if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                    val remaining = entries.toMutableList().apply { removeAt(index) }
+                    val nextIndex = when {
+                        remaining.isEmpty() -> 0
+                        index < selectedIndex -> selectedIndex - 1
+                        index == selectedIndex -> index.coerceAtMost(remaining.lastIndex)
+                        else -> selectedIndex
+                    }
+                    onEdit(provider.withApiKeyInfos(remaining, nextIndex))
+                }
+            }
+            SwipeToDismissBox(
+                state = dismissState,
+                enableDismissFromStartToEnd = false,
+                backgroundContent = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 20.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_api_key_delete), tint = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                },
             ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onEdit(provider.withApiKeyInfos(entries, index)) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                 RadioButton(
                     selected = index == selectedIndex,
                     onClick = null,
@@ -300,7 +337,7 @@ private fun ApiKeyEditor(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${if (showKeys) entry.key else maskApiKey(entry.key)}  ·  x${formatMultiplier(entry.multiplier)}",
+                        text = "x${formatMultiplier(entry.multiplier)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -313,22 +350,6 @@ private fun ApiKeyEditor(
                         contentDescription = stringResource(R.string.setting_provider_page_api_key_edit),
                     )
                 }
-                IconButton(
-                    onClick = {
-                        val remaining = entries.toMutableList().apply { removeAt(index) }
-                        val nextIndex = when {
-                            remaining.isEmpty() -> 0
-                            index < selectedIndex -> selectedIndex - 1
-                            index == selectedIndex -> index.coerceAtMost(remaining.lastIndex)
-                            else -> selectedIndex
-                        }
-                        onEdit(provider.withApiKeyInfos(remaining, nextIndex))
-                    }
-                ) {
-                    Icon(
-                        HugeIcons.Delete01,
-                        contentDescription = stringResource(R.string.setting_provider_page_api_key_delete),
-                    )
                 }
             }
             if (index < entries.lastIndex) {
@@ -395,6 +416,7 @@ private fun ApiKeyEditor(
             },
         )
     }
+
 }
 
 private fun formatMultiplier(value: Float): String =

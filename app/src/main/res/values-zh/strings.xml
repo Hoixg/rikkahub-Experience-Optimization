@@ -1331,6 +1331,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_local_tools_external_storage_desc">允许 AI 查看和管理你授权的手机、SD 卡、USB 或云盘文件夹</string>
   <string name="assistant_page_local_tools_archive_title">ZIP 压缩包管理</string>
   <string name="assistant_page_local_tools_archive_desc">允许 AI 创建、查看和解压 ZIP 压缩包</string>
+  <string name="assistant_page_local_tools_termux_title">Termux 手机终端</string>
+  <string name="assistant_page_local_tools_termux_desc">允许 AI 在手机 Termux 中执行命令并控制持久终端会话</string>
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">默认关闭。打开后，所有对话在上下文过长时会自动总结较早内容；聊天记录不会被删除，手动压缩仍可单独使用。</string>
 </resources>

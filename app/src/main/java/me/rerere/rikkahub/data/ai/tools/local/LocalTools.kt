@@ -64,6 +64,14 @@ class LocalTools(
         if (options.contains(LocalToolOption.Archive)) {
             tools.addAll(archiveTools(context))
         }
+        if (options.contains(LocalToolOption.Termux)) {
+            tools.add(termuxRunCommandTool(context))
+            tools.add(termuxSessionStartTool(context))
+            tools.add(termuxSessionSendTool(context))
+            tools.add(termuxSessionReadTool(context))
+            tools.add(termuxSessionKillTool(context))
+            tools.add(termuxSessionListTool(context))
+        }
         return tools
     }
 }
