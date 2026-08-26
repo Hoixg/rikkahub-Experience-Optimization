@@ -167,7 +167,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
     }
 
     // Keep edits alive while switching between the configuration and model tabs.
-    LaunchedEffect(pager.currentPage, draftProvider) {
+    LaunchedEffect(pager.currentPage) {
         if (pager.currentPage == 1 && draftProvider != provider) {
             onEdit(draftProvider)
         }
@@ -232,6 +232,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
     ) {
         HorizontalPager(
             state = pager,
+            userScrollEnabled = false,
             modifier = Modifier
                 .padding(it)
                 .consumeWindowInsets(it)
@@ -242,6 +243,10 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         provider = draftProvider,
                         onEdit = {
                             draftProvider = it
+                        },
+                        onSave = {
+                            draftProvider = it
+                            onEdit(it)
                             toaster.show(
                                 context.getString(R.string.setting_provider_page_save_success),
                                 type = ToastType.Success
@@ -271,6 +276,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
 private fun SettingProviderConfigPage(
     provider: ProviderSetting,
     onEdit: (ProviderSetting) -> Unit,
+    onSave: (ProviderSetting) -> Unit,
     onDelete: () -> Unit
 ) {
     var internalProvider by remember(provider) { mutableStateOf(provider) }
@@ -288,6 +294,7 @@ private fun SettingProviderConfigPage(
             provider = internalProvider,
             onEdit = {
                 internalProvider = it
+                onEdit(it)
             }
         )
 
@@ -295,7 +302,10 @@ private fun SettingProviderConfigPage(
             SettingProviderBalanceOption(
                 provider = internalProvider,
                 balanceOption = internalProvider.balanceOption,
-                onEdit = { internalProvider = internalProvider.copyProvider(balanceOption = it) }
+                onEdit = {
+                    internalProvider = internalProvider.copyProvider(balanceOption = it)
+                    onEdit(internalProvider)
+                }
             )
             ProviderBalanceText(providerSetting = provider, style = MaterialTheme.typography.labelSmall)
         }
@@ -322,6 +332,7 @@ private fun SettingProviderConfigPage(
             IconButton(
                 onClick = {
                     internalProvider = internalProvider.resetBaseUrlToDefault()
+                    onEdit(internalProvider)
                 },
                 enabled = !internalProvider.isUsingDefaultBaseUrl(),
             ) {
@@ -333,7 +344,7 @@ private fun SettingProviderConfigPage(
 
             Button(
                 onClick = {
-                    onEdit(internalProvider)
+                    onSave(internalProvider)
                 }
             ) {
                 Text(stringResource(R.string.setting_provider_page_save))
