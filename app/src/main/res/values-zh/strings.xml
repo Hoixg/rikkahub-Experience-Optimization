@@ -1327,5 +1327,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_terminal_close_confirm_title">关闭终端 %1$d？</string>
   <string name="workspace_terminal_close_confirm_message">关闭此标签页将终止其中仍在运行的任何进程。</string>
   <string name="workspace_terminal_close">关闭</string>
+  <string name="assistant_page_local_tools_external_storage_title">外部文件夹访问</string>
+  <string name="assistant_page_local_tools_external_storage_desc">允许 AI 查看和管理你授权的手机、SD 卡、USB 或云盘文件夹</string>
+  <string name="assistant_page_local_tools_archive_title">ZIP 压缩包管理</string>
+  <string name="assistant_page_local_tools_archive_desc">允许 AI 创建、查看和解压 ZIP 压缩包</string>
 </resources>
 

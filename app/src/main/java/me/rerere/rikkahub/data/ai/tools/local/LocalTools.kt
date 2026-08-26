@@ -4,6 +4,7 @@ import android.content.Context
 import me.rerere.ai.core.Tool
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.tts.provider.TTSManager
 
 class LocalTools(
@@ -11,6 +12,8 @@ class LocalTools(
     private val eventBus: AppEventBus,
     private val ttsManager: TTSManager,
     private val settingsStore: SettingsStore,
+    private val storageGrantStore: StorageVolumeGrantStore,
+    private val safPickerResultBuffer: SafPickerResultBuffer,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
 
@@ -51,6 +54,15 @@ class LocalTools(
         if (options.contains(LocalToolOption.Calendar)) {
             tools.add(calendarQueryTool)
             tools.add(calendarCreateTool)
+        }
+        if (options.contains(LocalToolOption.ExternalStorage)) {
+            tools.add(listStorageVolumesTool(context))
+            tools.add(listGrantedDirectoriesTool(storageGrantStore))
+            tools.add(grantDirectoryAccessTool(context, storageGrantStore, safPickerResultBuffer))
+            tools.addAll(fileManagerTools(context))
+        }
+        if (options.contains(LocalToolOption.Archive)) {
+            tools.addAll(archiveTools(context))
         }
         return tools
     }

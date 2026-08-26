@@ -226,6 +226,16 @@ private fun AssistantLocalToolContent(
                     )
                 }
             )
+            item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_external_storage_title)) },
+                supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_external_storage_desc)) },
+                trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.ExternalStorage), onCheckedChange = { toggleLocalTool(LocalToolOption.ExternalStorage, it) }) }
+            )
+            item(
+                headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_archive_title)) },
+                supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_archive_desc)) },
+                trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.Archive), onCheckedChange = { toggleLocalTool(LocalToolOption.Archive, it) }) }
+            )
         }
     }
 }

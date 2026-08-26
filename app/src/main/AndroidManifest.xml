@@ -59,6 +59,10 @@
     android:usesCleartextTraffic="true"
     tools:targetApi="33">
     <activity
+      android:name=".data.ai.tools.local.ToolHostActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    <activity
       android:name=".ui.activity.SafeModeActivity"
       android:exported="false"
       android:label="@string/title_activity_safe_mode"
