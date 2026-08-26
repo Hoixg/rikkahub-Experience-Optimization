@@ -133,15 +133,11 @@ class GenerationHandler(
 
             // Skip generation if we have approved/denied tool calls to handle
             if (pendingTools.isEmpty()) {
-                val requestMessagesForStep = if (stepIndex == 0) {
-                    autoCompaction?.let { compaction ->
-                        listOf(UIMessage.user(compaction.summary).copy(isSynthetic = true)) +
-                            messages.drop(compaction.sourceMessageCount)
-                    } ?: if (settings.enableAutoCompaction) {
-                        messages.limitContext(assistant.contextMessageLimit)
-                    } else {
-                        messages
-                    }
+                val requestMessagesForStep = autoCompaction?.let { compaction ->
+                    listOf(UIMessage.user(compaction.summary).copy(isSynthetic = true)) +
+                        messages.drop(compaction.sourceMessageCount)
+                } ?: if (settings.enableAutoCompaction) {
+                    messages.limitContext(assistant.contextMessageLimit)
                 } else {
                     messages
                 }
