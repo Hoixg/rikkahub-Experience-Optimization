@@ -90,6 +90,13 @@ class GenerationHandler(
 
         var messages: List<UIMessage> = messages
 
+        // 压缩结果只用于组装模型请求，messages 始终保留完整聊天记录。
+        val autoCompaction = if (settings.enableAutoCompaction) {
+            maybeAutoCompactMessages(settings, model, assistant, messages)
+        } else {
+            null
+        }
+
         for (stepIndex in 0 until maxSteps) {
             Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
 
@@ -126,10 +133,23 @@ class GenerationHandler(
 
             // Skip generation if we have approved/denied tool calls to handle
             if (pendingTools.isEmpty()) {
+                val requestMessagesForStep = if (stepIndex == 0) {
+                    autoCompaction?.let { compaction ->
+                        listOf(UIMessage.user(compaction.summary).copy(isSynthetic = true)) +
+                            messages.drop(compaction.sourceMessageCount)
+                    } ?: if (settings.enableAutoCompaction) {
+                        messages.limitContext(assistant.contextMessageLimit)
+                    } else {
+                        messages
+                    }
+                } else {
+                    messages
+                }
                 generateInternal(
                     assistant = assistant,
                     settings = settings,
                     messages = messages,
+                    requestMessages = requestMessagesForStep,
                     onUpdateMessages = {
                         messages = it.transforms(
                             transformers = outputTransformers,
@@ -349,6 +369,7 @@ class GenerationHandler(
         assistant: Assistant,
         settings: Settings,
         messages: List<UIMessage>,
+        requestMessages: List<UIMessage>,
         onUpdateMessages: suspend (List<UIMessage>) -> Unit,
         transformers: List<MessageTransformer>,
         model: Model,
@@ -390,7 +411,7 @@ class GenerationHandler(
             if (system.isNotBlank()) {
                 add(UIMessage.system(prompt = system).copy(isSynthetic = true))
             }
-            addAll(messages.limitContext(assistant.contextMessageLimit))
+            addAll(requestMessages)
         }.transforms(
             transformers = transformers,
             context = context,
@@ -440,6 +461,87 @@ class GenerationHandler(
             messages = messages.handleTextGenerationResult(result = result, model = model)
             onUpdateMessages(messages)
         }
+    }
+
+    private data class AutoCompaction(
+        val summary: String,
+        val sourceMessageCount: Int,
+    )
+
+    private suspend fun maybeAutoCompactMessages(
+        settings: Settings,
+        model: Model,
+        assistant: Assistant,
+        messages: List<UIMessage>,
+    ): AutoCompaction? {
+        if (messages.size < 2) return null
+
+        val configuredLimit = assistant.contextMessageLimit.takeIf { it > 0 }
+        val estimatedTokens = messages.sumOf { message ->
+            (compactionSourceText(message, maxLength = 4_000).length / 3).coerceAtLeast(1)
+        }
+        val modelLimit = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(model.modelId)
+            ?.takeIf { it > 0 }
+        val shouldCompact = when {
+            configuredLimit != null -> messages.size > configuredLimit
+            modelLimit != null -> estimatedTokens >= modelLimit * 3 / 4
+            else -> false
+        }
+        if (!shouldCompact) return null
+
+        val keepCount = when {
+            configuredLimit != null -> (configuredLimit / 2).coerceAtLeast(4)
+            else -> (messages.size / 3).coerceAtLeast(4)
+        }.coerceAtMost(messages.size - 1)
+        val sourceMessages = messages.dropLast(keepCount)
+        val recentMessages = messages.takeLast(keepCount)
+        if (sourceMessages.isEmpty()) return null
+
+        val compressionModel = settings.findModelById(settings.compressModelId)
+            ?: settings.findModelById(settings.chatModelId)
+            ?: return null
+        val compressionProvider = compressionModel.findProvider(settings.providers)
+            ?: return null
+        val compressionHandler = providerManager.getProviderByType(compressionProvider)
+        val content = sourceMessages.joinToString("\\n\\n") {
+            compactionSourceText(it, maxLength = 4_000)
+        }.take(160_000)
+        val prompt = settings.compressPrompt.applyPlaceholders(
+            "content" to content,
+            "target_tokens" to ((modelLimit ?: 2_000) / 4).coerceAtLeast(256).toString(),
+            "additional_context" to "这是自动整理。请保留用户目标、关键决定、代码或文件路径、工具结果和未完成事项。",
+            "locale" to Locale.getDefault().displayName,
+        )
+        val summary = runCatching {
+            compressionHandler.generateText(
+                providerSetting = compressionProvider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = TextGenerationParams(model = compressionModel),
+            ).message.toText().trim()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        return AutoCompaction(summary = summary, sourceMessageCount = sourceMessages.size)
+    }
+
+    private fun compactionSourceText(message: UIMessage, maxLength: Int): String {
+        val text = buildString {
+            appendLine("[" + message.role.name + "]")
+            message.parts.forEach { part ->
+                when (part) {
+                    is UIMessagePart.Text -> appendLine(part.text)
+                    is UIMessagePart.Reasoning -> appendLine(part.reasoning)
+                    is UIMessagePart.Tool -> {
+                        appendLine("[工具调用] " + part.toolName)
+                        appendLine("参数: " + part.input)
+                        appendLine("结果:")
+                        part.output.filterIsInstance<UIMessagePart.Text>().forEach { appendLine(it.text) }
+                    }
+                    else -> appendLine("[非文本内容]")
+                }
+            }
+        }
+        return if (text.length <= maxLength) text else text.take(maxLength) + "..."
     }
 
     private fun maybeTruncateToolOutput(

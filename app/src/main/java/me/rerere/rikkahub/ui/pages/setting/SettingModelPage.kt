@@ -167,6 +167,26 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
             )
         }
+        item {
+            CardGroup {
+                item(
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = settings.enableAutoCompaction,
+                            onCheckedChange = {
+                                vm.updateSettings(settings.copy(enableAutoCompaction = it))
+                            },
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 
