@@ -1341,5 +1341,10 @@
   <string name="assistant_page_local_tools_termux_desc">允许 AI 在手机 Termux 中执行命令并控制持久终端会话</string>
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">默认关闭。打开后，所有对话在上下文过长时会自动总结较早内容；聊天记录不会被删除，手动压缩仍可单独使用。</string>
+  <string name="chat_generation_network_retrying">%1$s. Retrying (%2$d/%3$d)…</string>
+  <string name="chat_generation_network_unknown_host">Unable to resolve server address</string>
+  <string name="chat_generation_network_timeout">Connection timed out</string>
+  <string name="chat_generation_network_unreachable">Unable to connect to server</string>
+  <string name="chat_generation_network_disconnected">Network connection lost</string>
 </resources>
 
