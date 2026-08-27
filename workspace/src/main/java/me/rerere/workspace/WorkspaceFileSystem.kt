@@ -57,7 +57,28 @@ class WorkspaceFileSystem(
         val file = resolvePath(root, path)
         file.parentFile?.mkdirs()
         val target = if (!file.exists()) file else resolveConflict(file)
-        inputStream.use { input -> target.outputStream().use { input.copyTo(it) } }
+        try {
+            inputStream.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var total = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        total += read
+                        require(total <= config.maxImportBytes) {
+                            "File is too large to import: more than ${config.maxImportBytes} bytes"
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            // The selected conflict-free target is new, so it is safe to remove a partial copy.
+            target.delete()
+            throw error
+        }
         return target.toEntry(root)
     }
 

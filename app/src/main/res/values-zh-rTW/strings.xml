@@ -1162,6 +1162,8 @@
   <string name="workspace_detail_area_files">檔案</string>
   <string name="workspace_detail_area_rootfs">Rootfs</string>
   <string name="workspace_detail_empty_directory">空目錄</string>
+  <string name="workspace_detail_folder_export_success">已匯出 %1$s</string>
+  <string name="workspace_detail_folder_export_partial">已匯出 %1$s，%2$d 個項目失敗</string>
   <string name="workspace_detail_shell_disabled">已停用</string>
   <string name="workspace_detail_shell_installing">正在安裝</string>
   <string name="workspace_detail_shell_ready">就緒</string>

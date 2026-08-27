@@ -295,11 +295,20 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         require(documentId.startsWith(DOC_PREFIX)) { "Invalid documentId: $documentId" }
         val rest = documentId.removePrefix(DOC_PREFIX)
         val idx = rest.indexOf('/')
-        return if (idx < 0) {
-            DocId(isRoot = false, root = rest, relPath = "")
-        } else {
-            DocId(isRoot = false, root = rest.substring(0, idx), relPath = rest.substring(idx + 1))
-        }
+        val root = if (idx < 0) rest else rest.substring(0, idx)
+        val relPath = if (idx < 0) "" else rest.substring(idx + 1)
+        requireValidRoot(root)
+        return DocId(isRoot = false, root = root, relPath = relPath)
+    }
+
+    private fun requireValidRoot(root: String) {
+        require(
+            root.isNotBlank() &&
+                root != "." && root != ".." &&
+                !root.contains('/') && !root.contains('\\') &&
+                !root.contains("..") && !root.contains('\u0000')
+        ) { "Invalid workspace root" }
+        require(allWorkspaces().any { it.root == root }) { "Unknown workspace: $root" }
     }
 
     private fun buildDocId(root: String, relPath: String): String =

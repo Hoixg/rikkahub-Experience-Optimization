@@ -1,13 +1,18 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
+import android.net.Uri
+import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -35,6 +40,9 @@ class WorkspaceDetailVM(
 
     private val _installError = MutableStateFlow<String?>(null)
     val installError = _installError.asStateFlow()
+
+    private val _folderExportResult = MutableStateFlow<WorkspaceFolderExportResult?>(null)
+    val folderExportResult = _folderExportResult.asStateFlow()
 
     init {
         loadWorkspace()
@@ -74,7 +82,14 @@ class WorkspaceDetailVM(
 
     fun refresh() {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update {
+                it.copy(
+                    loading = true,
+                    error = null,
+                    expandedPaths = emptySet(),
+                    childrenCache = emptyMap(),
+                )
+            }
             runCatching {
                 repository.listFiles(
                     id = id,
@@ -88,6 +103,31 @@ class WorkspaceDetailVM(
                     it.copy(
                         entries = emptyList(),
                         loading = false,
+                        error = error.message ?: "加载工作区文件失败",
+                    )
+                }
+            }
+        }
+    }
+
+    fun toggleExpand(entry: WorkspaceFileEntry) {
+        if (!entry.isDirectory) return
+        val path = entry.path
+        if (path in state.value.expandedPaths) {
+            _state.update { it.copy(expandedPaths = it.expandedPaths - path) }
+            return
+        }
+        _state.update { it.copy(expandedPaths = it.expandedPaths + path) }
+        if (path in state.value.childrenCache) return
+        viewModelScope.launch {
+            runCatching {
+                repository.listFiles(id = id, area = state.value.area, path = path)
+            }.onSuccess { children ->
+                _state.update { it.copy(childrenCache = it.childrenCache + (path to children)) }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        expandedPaths = it.expandedPaths - path,
                         error = error.message ?: "加载工作区文件失败",
                     )
                 }
@@ -112,9 +152,12 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun importFile(inputStream: InputStream, fileName: String) {
+    fun importFile(openSource: () -> Pair<InputStream, String>?) {
         viewModelScope.launch {
             runCatching {
+                val (inputStream, fileName) = withContext(Dispatchers.IO) {
+                    openSource() ?: error("无法打开导入文件")
+                }
                 repository.importFile(
                     id = id,
                     area = state.value.area,
@@ -130,9 +173,12 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun exportFile(entry: WorkspaceFileEntry, outputStream: OutputStream) {
+    fun exportFile(entry: WorkspaceFileEntry, openOutputStream: () -> OutputStream?) {
         viewModelScope.launch {
             runCatching {
+                val outputStream = withContext(Dispatchers.IO) {
+                    openOutputStream() ?: error("无法打开导出目标")
+                }
                 repository.exportFile(
                     id = id,
                     area = state.value.area,
@@ -145,6 +191,76 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun exportFolder(
+        entry: WorkspaceFileEntry,
+        openDestinationTree: () -> DocumentFile?,
+        openOutputStream: (Uri) -> OutputStream?,
+    ) {
+        viewModelScope.launch {
+            val area = state.value.area
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val destinationTree = openDestinationTree() ?: error("无法打开导出目录")
+                    val listing = mutableMapOf<String, List<WorkspaceFileEntry>>()
+                    suspend fun collect(path: String) {
+                        val children = repository.listFiles(id = id, area = area, path = path)
+                        listing[path] = children
+                        children.filter { it.isDirectory }.forEach { collect(it.path) }
+                    }
+                    collect(entry.path)
+
+                    val plan = planWorkspaceFolderExport(entry.path, listing)
+                    val destinationDirs = mutableMapOf<String, DocumentFile>()
+                    destinationDirs[entry.path] = destinationTree.createDirectory(entry.name)
+                        ?: error("无法创建导出目录：${entry.name}")
+
+                    var failures = 0
+                    for (item in plan) {
+                        val parent = destinationDirs[item.parentPath]
+                        if (parent == null) {
+                            failures++
+                            continue
+                        }
+                        if (item.isDirectory) {
+                            val directory = parent.createDirectory(item.name)
+                            if (directory == null) {
+                                failures++
+                            } else {
+                                destinationDirs[item.sourcePath] = directory
+                            }
+                        } else {
+                            runCatching {
+                                val file = parent.createFile("application/octet-stream", item.name)
+                                    ?: error("无法创建文件：${item.name}")
+                                val output = openOutputStream(file.uri) ?: error("无法打开文件输出流")
+                                output.use { stream ->
+                                    repository.exportFile(
+                                        id = id,
+                                        area = area,
+                                        path = item.sourcePath,
+                                        outputStream = stream,
+                                    )
+                                }
+                            }.onFailure { error ->
+                                failures++
+                                Log.w(TAG, "Folder export failed: ${item.sourcePath}", error)
+                            }
+                        }
+                    }
+                    failures
+                }
+            }.onSuccess { failures ->
+                _folderExportResult.value = WorkspaceFolderExportResult(entry.name, failures)
+            }.onFailure { error ->
+                _state.update { it.copy(error = error.message ?: "导出文件夹失败") }
+            }
+        }
+    }
+
+    fun dismissFolderExportResult() {
+        _folderExportResult.value = null
+    }
+
     /**
      * 把当前区域下的文件导出到 cacheDir 的临时文件, 完成后回调 [onReady].
      * 供分享 / 图片预览 / 交给系统应用打开等复用 (它们都需要一个 FileProvider 可访问的真实 File).
@@ -152,17 +268,19 @@ class WorkspaceDetailVM(
     fun exportToCacheFile(entry: WorkspaceFileEntry, cacheDir: File, onReady: (File) -> Unit) {
         viewModelScope.launch {
             runCatching {
-                val dir = File(cacheDir, "workspace_share").apply { mkdirs() }
-                val file = File(dir, entry.name)
-                file.outputStream().use { output ->
-                    repository.exportFile(
-                        id = id,
-                        area = state.value.area,
-                        path = entry.path,
-                        outputStream = output,
-                    )
+                withContext(Dispatchers.IO) {
+                    val dir = File(cacheDir, "workspace_share").apply { mkdirs() }
+                    val file = File(dir, entry.name)
+                    file.outputStream().use { output ->
+                        repository.exportFile(
+                            id = id,
+                            area = state.value.area,
+                            path = entry.path,
+                            outputStream = output,
+                        )
+                    }
+                    file
                 }
-                file
             }.onSuccess(onReady).onFailure { error ->
                 _state.update { it.copy(error = error.message ?: "导出文件失败") }
             }
@@ -254,6 +372,10 @@ class WorkspaceDetailVM(
             _state.update { it.copy(workspace = workspace) }
         }
     }
+
+    companion object {
+        private const val TAG = "WorkspaceDetailVM"
+    }
 }
 
 data class WorkspaceDetailState(
@@ -263,6 +385,8 @@ data class WorkspaceDetailState(
     val entries: List<WorkspaceFileEntry> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
+    val expandedPaths: Set<String> = emptySet(),
+    val childrenCache: Map<String, List<WorkspaceFileEntry>> = emptyMap(),
 )
 
 data class WorkspaceTerminalState(
@@ -275,4 +399,60 @@ sealed interface WorkspaceTerminalEntry {
     data class Command(val command: String) : WorkspaceTerminalEntry
     data class Result(val result: WorkspaceCommandResult) : WorkspaceTerminalEntry
     data class Error(val message: String) : WorkspaceTerminalEntry
+}
+
+data class WorkspaceFolderExportResult(
+    val folderName: String,
+    val failures: Int,
+)
+
+data class WorkspaceTreeRow(
+    val entry: WorkspaceFileEntry,
+    val depth: Int,
+)
+
+internal fun flattenWorkspaceTree(
+    entries: List<WorkspaceFileEntry>,
+    expandedPaths: Set<String>,
+    childrenCache: Map<String, List<WorkspaceFileEntry>>,
+    depth: Int = 0,
+): List<WorkspaceTreeRow> = entries.flatMap { entry ->
+    val row = WorkspaceTreeRow(entry, depth)
+    if (entry.isDirectory && entry.path in expandedPaths) {
+        listOf(row) + flattenWorkspaceTree(
+            childrenCache[entry.path].orEmpty(),
+            expandedPaths,
+            childrenCache,
+            depth + 1,
+        )
+    } else {
+        listOf(row)
+    }
+}
+
+internal data class WorkspaceExportPlanEntry(
+    val sourcePath: String,
+    val parentPath: String,
+    val name: String,
+    val isDirectory: Boolean,
+)
+
+internal fun planWorkspaceFolderExport(
+    rootPath: String,
+    listing: Map<String, List<WorkspaceFileEntry>>,
+): List<WorkspaceExportPlanEntry> {
+    val plan = mutableListOf<WorkspaceExportPlanEntry>()
+    fun walk(path: String) {
+        for (child in listing[path].orEmpty()) {
+            plan += WorkspaceExportPlanEntry(
+                sourcePath = child.path,
+                parentPath = path,
+                name = child.name,
+                isDirectory = child.isDirectory,
+            )
+            if (child.isDirectory) walk(child.path)
+        }
+    }
+    walk(rootPath)
+    return plan
 }
