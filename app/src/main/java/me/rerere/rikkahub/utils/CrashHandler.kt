@@ -8,7 +8,7 @@ private const val TAG = "CrashHandler"
 private const val PREFS_NAME = "crash_handler"
 private const val KEY_CRASHED = "crashed"
 private const val KEY_STACKTRACE = "stacktrace"
-private const val MAX_STACKTRACE_LENGTH = 8000
+private const val MAX_STACKTRACE_LENGTH = 32_000
 
 object CrashHandler {
     fun install(context: Context) {
@@ -39,6 +39,15 @@ object CrashHandler {
     private fun markCrashed(context: Context, thread: Thread, throwable: Throwable) {
         val stackTrace = buildString {
             appendLine("Thread: ${thread.name}")
+            appendLine("Cause chain:")
+            var cause: Throwable? = throwable
+            var depth = 0
+            while (cause != null && depth < 32) {
+                appendLine("${cause::class.java.name}: ${cause.message.orEmpty()}")
+                cause = cause.cause
+                depth++
+            }
+            appendLine()
             appendLine(throwable.stackTraceToString())
         }.take(MAX_STACKTRACE_LENGTH)
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
