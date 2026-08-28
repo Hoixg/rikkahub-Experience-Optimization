@@ -506,6 +506,8 @@ private fun workspaceToolApprovalItems() = listOf(
     "workspace_write_file" to stringResource(R.string.workspace_detail_tool_write_file),
     "workspace_edit_file" to stringResource(R.string.workspace_detail_tool_edit_file),
     "workspace_shell" to stringResource(R.string.workspace_detail_tool_shell),
+    "workspace_export_file" to stringResource(R.string.workspace_detail_tool_export_file),
+    "workspace_import_file" to stringResource(R.string.workspace_detail_tool_import_file),
     "workspace_terminal_start" to stringResource(R.string.workspace_detail_tool_terminal_start),
     "workspace_terminal_send" to stringResource(R.string.workspace_detail_tool_terminal_send),
     "workspace_terminal_read" to stringResource(R.string.workspace_detail_tool_terminal_read),

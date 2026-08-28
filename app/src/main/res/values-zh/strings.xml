@@ -1201,6 +1201,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_tool_delete_file">删除文件</string>
   <string name="workspace_detail_tool_move_file">移动文件</string>
   <string name="workspace_detail_tool_shell">执行命令</string>
+  <string name="workspace_detail_tool_export_file">导出文件到手机</string>
+  <string name="workspace_detail_tool_import_file">从手机导入文件</string>
   <string name="workspace_detail_tool_terminal_start">打开终端会话</string>
   <string name="workspace_detail_tool_terminal_send">发送终端输入</string>
   <string name="workspace_detail_tool_terminal_read">读取终端画面</string>

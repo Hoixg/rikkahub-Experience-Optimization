@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
@@ -17,6 +22,10 @@ import me.rerere.ai.ui.DiffMetadata
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.toMetadata
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.data.ai.tools.local.SafPickerResult
+import me.rerere.rikkahub.data.ai.tools.local.SafPickerResultBuffer
+import me.rerere.rikkahub.data.ai.tools.local.ToolHostActivity
+import me.rerere.rikkahub.data.ai.tools.local.launchToolFilePicker
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalAgentSession
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalScreen
@@ -36,6 +45,8 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_write_file" to false,
     "workspace_edit_file" to false,
     "workspace_shell" to true,
+    "workspace_export_file" to true,
+    "workspace_import_file" to true,
     "workspace_terminal_start" to true,
     "workspace_terminal_send" to true,
     "workspace_terminal_read" to false,
@@ -56,6 +67,8 @@ suspend fun createWorkspaceTools(
     fun needsApproval(name: String) = resolveWorkspaceToolApproval(name, approvalOverrides)
 
     val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
+    val context = getKoin().get<Context>()
+    val pickerBuffer = getKoin().get<SafPickerResultBuffer>()
     val terminalSessionManager = getKoin().get<WorkspaceTerminalSessionManager>()
     val workspaceRoot = workspaceRepository.getById(workspaceId)?.root
         ?: error("Workspace not found: $workspaceId")
@@ -65,6 +78,8 @@ suspend fun createWorkspaceTools(
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createExportFileTool(workspaceId, ::needsApproval, workspaceRepository, context, pickerBuffer),
+        createImportFileTool(workspaceId, ::needsApproval, workspaceRepository, context, pickerBuffer),
         createTerminalStartTool(workspaceRoot, ::needsApproval, terminalSessionManager),
         createTerminalSendTool(workspaceRoot, ::needsApproval, terminalSessionManager),
         createTerminalReadTool(workspaceRoot, ::needsApproval, terminalSessionManager),
@@ -289,6 +304,187 @@ private fun createShellTool(
         )
     },
 )
+
+private fun createExportFileTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+    context: Context,
+    pickerBuffer: SafPickerResultBuffer,
+) = Tool(
+    name = "workspace_export_file",
+    description = "Export a file from the bound workspace Rootfs to a phone file selected by the user. Paths must be absolute, for example /workspace/report.md.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                putPathProperty(required = true)
+                put("suggested_name", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional filename suggested to the Android file picker")
+                })
+                put("mime_type", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional MIME type for the exported file. Defaults to */*")
+                })
+            },
+            required = listOf("path"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_export_file") },
+    execute = { input ->
+        val params = input.jsonObject
+        val path = params.absolutePath("path")
+        val suggestedName = params.string("suggested_name")
+            ?.trim()
+            ?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+            ?: path.substringAfterLast('/').ifBlank { "exported_file" }
+        val mimeType = params.string("mime_type")?.trim().orEmpty().ifBlank { "*/*" }
+        when (val picked = launchToolFilePicker(
+            context = context,
+            buffer = pickerBuffer,
+            mode = ToolHostActivity.MODE_CREATE_FILE,
+            mimeType = mimeType,
+            suggestedName = suggestedName,
+        )) {
+            is SafPickerResult.FilePicked -> {
+                val uri = Uri.parse(picked.contentUri)
+                try {
+                    val output = withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)
+                            ?: error("无法打开手机导出目标")
+                    }
+                    output.use { stream ->
+                        workspaceRepository.exportRootfsFile(
+                            id = workspaceId,
+                            path = path,
+                            outputStream = stream,
+                        )
+                    }
+                    listOf(UIMessagePart.Text(buildJsonObject {
+                        put("success", true)
+                        put("workspace_path", path)
+                        put("phone_uri", picked.contentUri)
+                        put("file_name", suggestedName)
+                    }.toString()))
+                } catch (cause: Throwable) {
+                    // Do not delete the user-selected target: it may already have existed before this call.
+                    throw IllegalStateException(
+                        "导出到手机失败：" + (cause.message ?: "未知错误"),
+                        cause,
+                    )
+                }
+            }
+            SafPickerResult.Cancelled -> listOf(UIMessagePart.Text(buildJsonObject {
+                put("success", false)
+                put("cancelled", true)
+                put("message", "用户取消了导出")
+            }.toString()))
+            is SafPickerResult.Error -> error("打开手机文件选择器失败：" + picked.message)
+            is SafPickerResult.Granted -> error("导出文件选择器返回了无效结果")
+        }
+    },
+)
+
+private fun createImportFileTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+    workspaceRepository: WorkspaceRepository,
+    context: Context,
+    pickerBuffer: SafPickerResultBuffer,
+) = Tool(
+    name = "workspace_import_file",
+    description = "Import one file selected from the phone into the bound workspace files area. The destination defaults to /workspace and existing files are kept by adding a conflict suffix.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("destination_path", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional absolute workspace directory, such as /workspace or /workspace/data")
+                })
+                put("mime_type", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Optional MIME type filter for the Android file picker. Defaults to */*")
+                })
+            },
+        )
+    },
+    needsApproval = { needsApproval("workspace_import_file") },
+    execute = { input ->
+        val params = input.jsonObject
+        val destinationPath = workspaceDestinationPath(params.string("destination_path"))
+        val mimeType = params.string("mime_type")?.trim().orEmpty().ifBlank { "*/*" }
+        when (val picked = launchToolFilePicker(
+            context = context,
+            buffer = pickerBuffer,
+            mode = ToolHostActivity.MODE_OPEN_FILE,
+            mimeType = mimeType,
+        )) {
+            is SafPickerResult.FilePicked -> {
+                val uri = Uri.parse(picked.contentUri)
+                val fileName = phoneDisplayName(context, uri)
+                val inputStream = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)
+                        ?: error("无法读取手机文件")
+                }
+                val entry = inputStream.use { stream ->
+                    workspaceRepository.importFile(
+                        id = workspaceId,
+                        area = me.rerere.workspace.WorkspaceStorageArea.FILES,
+                        destinationPath = destinationPath,
+                        fileName = fileName,
+                        inputStream = stream,
+                    )
+                }
+                listOf(UIMessagePart.Text(buildJsonObject {
+                    put("success", true)
+                    put("workspace_path", ("/workspace/" + entry.path).trimEnd('/'))
+                    put("file_name", entry.name)
+                    put("size_bytes", entry.sizeBytes)
+                    put("phone_uri", picked.contentUri)
+                }.toString()))
+            }
+            SafPickerResult.Cancelled -> listOf(UIMessagePart.Text(buildJsonObject {
+                put("success", false)
+                put("cancelled", true)
+                put("message", "用户取消了导入")
+            }.toString()))
+            is SafPickerResult.Error -> error("打开手机文件选择器失败：" + picked.message)
+            is SafPickerResult.Granted -> error("导入文件选择器返回了无效结果")
+        }
+    },
+)
+
+private fun workspaceDestinationPath(raw: String?): String {
+    val path = raw?.trim()?.replace('\\', '/')?.trimEnd('/')
+        ?.takeIf { it.isNotBlank() }
+        ?: return ""
+    require(path == "/workspace" || path.startsWith("/workspace/")) {
+        "destination_path must be inside /workspace"
+    }
+    require(!path.contains('\u0000')) { "destination_path contains invalid character" }
+    return path.removePrefix("/workspace").trimStart('/')
+}
+
+private fun phoneDisplayName(context: Context, uri: Uri): String {
+    val queried = context.contentResolver.query(
+        uri,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0) cursor.getString(index) else null
+        } else null
+    }
+    return (queried ?: uri.lastPathSegment ?: "imported_file")
+        .replace('\\', '_')
+        .substringAfterLast('/')
+        .replace('\u0000', '_')
+        .ifBlank { "imported_file" }
+}
 
 private fun createTerminalStartTool(
     workspaceRoot: String,
