@@ -88,6 +88,12 @@ class WorkspaceManager(
         return file.length()
     }
 
+    fun resolvePreviewFile(
+        root: String,
+        area: WorkspaceStorageArea,
+        path: String,
+    ): File = fileSystem.resolveFile(areaDir(root, area), path)
+
     fun exportFile(
         root: String,
         path: String,

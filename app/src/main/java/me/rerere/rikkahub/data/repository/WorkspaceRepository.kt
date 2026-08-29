@@ -19,6 +19,7 @@ import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.uuid.Uuid
@@ -148,6 +149,16 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: return@withContext emptyList()
         manager.ensureWorkspace(workspace.root)
         manager.listFiles(workspace.root, path, area)
+    }
+
+    suspend fun resolvePreviewFile(
+        id: String,
+        area: WorkspaceStorageArea,
+        path: String,
+    ): File = withContext(Dispatchers.IO) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        manager.ensureWorkspace(workspace.root)
+        manager.resolvePreviewFile(workspace.root, area, path)
     }
 
     suspend fun readText(

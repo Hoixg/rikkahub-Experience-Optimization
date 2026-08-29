@@ -213,6 +213,11 @@ class WorkspaceFileSystem(
 
     fun resolve(root: File, path: String): File = resolvePath(root, path)
 
+    fun resolveFile(root: File, path: String): File = resolvePath(root, path).also { file ->
+        require(file.exists()) { "File does not exist: $path" }
+        require(file.isFile) { "Path is not a file: $path" }
+    }
+
     private fun File.toEntry(root: File): WorkspaceFileEntry = WorkspaceFileEntry(
         path = relativePath(root),
         name = name,

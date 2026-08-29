@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -27,13 +30,12 @@ import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,10 +68,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.graphics.toColorInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.ui.components.table.DataTable
@@ -80,6 +80,7 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
@@ -118,6 +119,8 @@ private fun generateMarkdownHtml(content: String): String {
     return HtmlGenerator(preprocessed, tree, flavour).generateHtml()
 }
 
+private const val MARKDOWN_HTML_PARSE_DEBOUNCE_MS = 120L
+
 // ---- Main composable ----
 
 @Composable
@@ -126,31 +129,51 @@ fun MarkdownNew(
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {},
+    imageResolver: MarkdownImageResolver? = null,
+    useLazyLayout: Boolean = false,
 ) {
-    var html by remember {
-        mutableStateOf(
-            value = generateMarkdownHtml(content),
-        )
+    var document by remember { mutableStateOf<Document?>(null) }
+
+    LaunchedEffect(content) {
+        val debounce = document != null
+        document = null
+        if (debounce) delay(MARKDOWN_HTML_PARSE_DEBOUNCE_MS)
+        document = withContext(Dispatchers.Default) {
+            runCatching { Jsoup.parse(generateMarkdownHtml(content)) }
+                .getOrElse { Jsoup.parse("") }
+        }
     }
 
-    val updatedContent by rememberUpdatedState(content)
-    LaunchedEffect(Unit) {
-        snapshotFlow { updatedContent }
-            .distinctUntilChanged()
-            .mapLatest { generateMarkdownHtml(it) }
-            .catch { it.printStackTrace() }
-            .flowOn(Dispatchers.Default)
-            .collect { html = it }
-    }
-
-    val document = remember(html) {
-        runCatching { Jsoup.parse(html) }.getOrElse { Jsoup.parse("") }
-    }
-
-    ProvideTextStyle(style) {
-        Column(modifier = modifier.padding(start = 4.dp)) {
-            document.body().childNodes().fastForEach { node ->
-                HtmlBodyNode(node = node, onClickCitation = onClickCitation)
+    CompositionLocalProvider(LocalMarkdownImageResolver provides imageResolver) {
+        val parsedDocument = document
+        if (parsedDocument == null) {
+            Box(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            }
+        } else {
+            ProvideTextStyle(style) {
+                val nodes = parsedDocument.body().childNodes()
+                if (useLazyLayout) {
+                    LazyColumn(modifier = modifier.padding(start = 4.dp)) {
+                        items(
+                            count = nodes.size,
+                            key = { index -> index },
+                        ) { index ->
+                            HtmlBodyNode(node = nodes[index], onClickCitation = onClickCitation)
+                        }
+                    }
+                } else {
+                    Column(modifier = modifier.padding(start = 4.dp)) {
+                        nodes.fastForEach { node ->
+                            HtmlBodyNode(node = node, onClickCitation = onClickCitation)
+                        }
+                    }
+                }
             }
         }
     }
@@ -248,8 +271,8 @@ private fun HtmlBlockElement(
             val alt = element.attr("alt")
             if (src.isNotEmpty()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    ZoomableAsyncImage(
-                        model = src,
+                    ResolvedMarkdownImage(
+                        source = src,
                         contentDescription = alt.takeIf { it.isNotEmpty() },
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -753,8 +776,8 @@ private fun HtmlInlineAsComposable(node: Node, onClickCitation: (String) -> Unit
                     val src = node.attr("src")
                     val alt = node.attr("alt")
                     if (src.isNotEmpty()) {
-                        ZoomableAsyncImage(
-                            model = src,
+                        ResolvedMarkdownImage(
+                            source = src,
                             contentDescription = alt.takeIf { it.isNotEmpty() },
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))

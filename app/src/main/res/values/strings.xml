@@ -1198,6 +1198,11 @@
   <string name="workspace_detail_tab_files">Files</string>
   <string name="workspace_open_files">Open workspace files</string>
   <string name="workspace_detail_import_file">Import File</string>
+  <string name="workspace_file_preview">Preview</string>
+  <string name="workspace_file_source">Source</string>
+  <string name="workspace_file_read_failed">Failed to read file</string>
+  <string name="workspace_file_saved">Saved</string>
+  <string name="workspace_file_save_failed">Save failed</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs Installation Failed</string>
   <string name="workspace_detail_delete_directory">Delete Directory</string>
   <string name="workspace_detail_delete_file">Delete File</string>

@@ -1183,6 +1183,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_detail_tab_files">文件</string>
   <string name="workspace_open_files">打开工作区文件</string>
   <string name="workspace_detail_import_file">导入文件</string>
+  <string name="workspace_file_preview">预览</string>
+  <string name="workspace_file_source">源码</string>
+  <string name="workspace_file_read_failed">读取文件失败</string>
+  <string name="workspace_file_saved">已保存</string>
+  <string name="workspace_file_save_failed">保存失败</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安装失败</string>
   <string name="workspace_detail_delete_directory">删除目录</string>
   <string name="workspace_detail_delete_file">删除文件</string>

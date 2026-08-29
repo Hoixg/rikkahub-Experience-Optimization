@@ -1135,6 +1135,11 @@
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">檔案</string>
   <string name="workspace_detail_import_file">匯入檔案</string>
+  <string name="workspace_file_preview">預覽</string>
+  <string name="workspace_file_source">原始碼</string>
+  <string name="workspace_file_read_failed">讀取檔案失敗</string>
+  <string name="workspace_file_saved">已儲存</string>
+  <string name="workspace_file_save_failed">儲存失敗</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安裝失敗</string>
   <string name="workspace_detail_delete_directory">刪除目錄</string>
   <string name="workspace_detail_delete_file">刪除檔案</string>

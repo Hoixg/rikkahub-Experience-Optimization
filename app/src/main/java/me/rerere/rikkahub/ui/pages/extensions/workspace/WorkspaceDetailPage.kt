@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -52,12 +53,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
@@ -92,6 +97,7 @@ import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import java.io.File
 
 @Composable
 fun WorkspaceDetailPage(
@@ -237,6 +243,7 @@ fun WorkspaceDetailPage(
                     onSelectArea = vm::selectArea,
                     onGoUp = vm::goUp,
                     onToggleExpand = vm::toggleExpand,
+                    onResolvePreview = vm::resolvePreviewFileSilently,
                     onOpen = { entry ->
                         when {
                             entry.isDirectory -> vm.open(entry)
@@ -246,9 +253,7 @@ fun WorkspaceDetailPage(
                                     Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
                                 )
 
-                                WorkspaceFileType.IMAGE -> vm.exportToCacheFile(entry, context.cacheDir) { file ->
-                                    // 传绝对路径 (而非 content:// URI): Coil 可直接加载,
-                                    // 预览弹窗的保存按钮 saveMessageImage 只认 "/" 开头路径, content URI 会报错
+                                WorkspaceFileType.IMAGE -> vm.resolvePreviewFile(entry) { file ->
                                     previewImageUri = file.absolutePath
                                 }
 
@@ -635,6 +640,7 @@ private fun WorkspaceFilesPage(
     onSelectArea: (WorkspaceStorageArea) -> Unit,
     onGoUp: () -> Unit,
     onToggleExpand: (WorkspaceFileEntry) -> Unit,
+    onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
@@ -686,6 +692,9 @@ private fun WorkspaceFilesPage(
                 onDelete = { onDelete(row.entry) },
                 onExport = { onExport(row.entry) },
                 onShare = { onShare(row.entry) },
+                workspaceId = state.workspace?.id.orEmpty(),
+                area = state.area,
+                onResolvePreview = onResolvePreview,
             )
         }
     }
@@ -751,6 +760,9 @@ private fun WorkspaceFileCard(
     onDelete: () -> Unit,
     onExport: () -> Unit,
     onShare: () -> Unit,
+    workspaceId: String,
+    area: WorkspaceStorageArea,
+    onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -781,15 +793,11 @@ private fun WorkspaceFileCard(
             } else {
                 Spacer(modifier = Modifier.size(28.dp))
             }
-            Icon(
-                imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = if (entry.isDirectory) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+            WorkspaceFileLeadingVisual(
+                entry = entry,
+                workspaceId = workspaceId,
+                area = area,
+                onResolvePreview = onResolvePreview,
             )
             Column(
                 modifier = Modifier
@@ -864,6 +872,61 @@ private fun WorkspaceFileCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WorkspaceFileLeadingVisual(
+    entry: WorkspaceFileEntry,
+    workspaceId: String,
+    area: WorkspaceStorageArea,
+    onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
+) {
+    val isImage = !entry.isDirectory && entry.detectFileType() == WorkspaceFileType.IMAGE
+    if (isImage) {
+        var previewFile by remember(workspaceId, area, entry.path, entry.updatedAt) { mutableStateOf<File?>(null) }
+        var failed by remember(workspaceId, area, entry.path, entry.updatedAt) { mutableStateOf(false) }
+        LaunchedEffect(workspaceId, area, entry.path, entry.updatedAt) {
+            onResolvePreview(entry) { file ->
+                previewFile = file
+                failed = file == null
+            }
+        }
+        val file = previewFile
+        if (file != null && !failed) {
+            val context = LocalContext.current
+            val cacheKey = "workspace:$workspaceId:${area.name}:${entry.path}:${entry.updatedAt}"
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(file)
+                    .memoryCacheKey(cacheKey)
+                    .diskCacheKey(cacheKey)
+                    .build(),
+                contentDescription = entry.name,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop,
+                onError = { failed = true },
+            )
+            return
+        }
+    }
+
+    Box(
+        modifier = Modifier.size(if (isImage) 48.dp else 22.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = if (entry.isDirectory) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
     }
 }
 

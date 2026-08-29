@@ -1137,6 +1137,11 @@
   <string name="workspace_detail_tab_basic">Основные</string>
   <string name="workspace_detail_tab_files">Файлы</string>
   <string name="workspace_detail_import_file">Импортировать файл</string>
+  <string name="workspace_file_preview">Просмотр</string>
+  <string name="workspace_file_source">Исходный текст</string>
+  <string name="workspace_file_read_failed">Не удалось прочитать файл</string>
+  <string name="workspace_file_saved">Сохранено</string>
+  <string name="workspace_file_save_failed">Не удалось сохранить</string>
   <string name="workspace_detail_rootfs_install_failed">Сбой установки Rootfs</string>
   <string name="workspace_detail_delete_directory">Удалить папку</string>
   <string name="workspace_detail_delete_file">Удалить файл</string>

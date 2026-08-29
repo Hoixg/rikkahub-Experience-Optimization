@@ -1,9 +1,12 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
@@ -11,6 +14,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -21,16 +27,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
+import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
@@ -50,14 +62,28 @@ fun WorkspaceFileEditorPage(
 ) {
     val repository = koinInject<WorkspaceRepository>()
     val toaster = LocalToaster.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val editable = area == WorkspaceStorageArea.FILES
     val fileName = path.substringAfterLast('/').ifBlank { path }
+    val isMarkdown = fileName.substringAfterLast('.', "").lowercase() in setOf("md", "markdown")
 
     val textState = rememberTextFieldState()
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
+    var markdownPreview by rememberSaveable(id, area, path) { mutableStateOf(true) }
+    val imageResolver: MarkdownImageResolver = remember(id, area, path, repository) {
+        { source ->
+            when (val resolved = resolveWorkspaceMarkdownImagePath(path, source)) {
+                null -> null
+                is WorkspaceMarkdownImagePath.Network -> resolved.url
+                is WorkspaceMarkdownImagePath.Local -> runCatching {
+                    repository.resolvePreviewFile(id, area, resolved.path).absolutePath
+                }.getOrNull()
+            }
+        }
+    }
 
     LaunchedEffect(id, area, path) {
         loading = true
@@ -68,7 +94,7 @@ fun WorkspaceFileEditorPage(
             textState.setTextAndPlaceCursorAtEnd(content)
             loading = false
         }.onFailure {
-            loadError = it.message ?: "读取文件失败"
+            loadError = it.message ?: context.getString(R.string.workspace_file_read_failed)
             loading = false
         }
     }
@@ -99,16 +125,22 @@ fun WorkspaceFileEditorPage(
                                             overwrite = true,
                                         )
                                     }.onSuccess {
-                                        toaster.show("已保存", type = ToastType.Success)
+                                        toaster.show(
+                                            context.getString(R.string.workspace_file_saved),
+                                            type = ToastType.Success,
+                                        )
                                     }.onFailure {
-                                        toaster.show(it.message ?: "保存失败", type = ToastType.Error)
+                                        toaster.show(
+                                            it.message ?: context.getString(R.string.workspace_file_save_failed),
+                                            type = ToastType.Error,
+                                        )
                                     }
                                     saving = false
                                 }
                             },
                             enabled = !saving,
                         ) {
-                            Text("Save")
+                            Text(stringResource(R.string.common_save))
                         }
                     }
                 },
@@ -139,20 +171,67 @@ fun WorkspaceFileEditorPage(
                 )
             }
 
-            else -> TextField(
-                state = textState,
+            else -> Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .imePadding(),
-                readOnly = !editable,
-                lineLimits = TextFieldLineLimits.MultiLine(),
-                textStyle = LocalTextStyle.current.copy(
-                    fontFamily = JetbrainsMono,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                ),
-            )
+                    .padding(innerPadding),
+            ) {
+                if (isMarkdown) {
+                    val modes = listOf(
+                        true to stringResource(R.string.workspace_file_preview),
+                        false to stringResource(R.string.workspace_file_source),
+                    )
+                    SingleChoiceSegmentedButtonRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        modes.forEachIndexed { index, (preview, label) ->
+                            SegmentedButton(
+                                selected = markdownPreview == preview,
+                                onClick = { markdownPreview = preview },
+                                shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
+
+                if (isMarkdown && markdownPreview) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
+                        SelectionContainer {
+                            MarkdownBlock(
+                                content = textState.text.toString(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                imageResolver = imageResolver,
+                                useLazyLayout = true,
+                            )
+                        }
+                    }
+                } else {
+                    TextField(
+                        state = textState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .imePadding(),
+                        readOnly = !editable,
+                        lineLimits = TextFieldLineLimits.MultiLine(),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontFamily = JetbrainsMono,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                        ),
+                    )
+                }
+            }
         }
     }
 }

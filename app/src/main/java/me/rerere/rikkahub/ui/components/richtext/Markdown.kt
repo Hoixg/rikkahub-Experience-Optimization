@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -44,8 +47,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,11 +85,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.hugeicons.HugeIcons
@@ -119,6 +120,10 @@ private val flavour by lazy {
 private val parser by lazy {
     MarkdownParser(flavour)
 }
+
+typealias MarkdownImageResolver = suspend (String) -> String?
+
+internal val LocalMarkdownImageResolver = staticCompositionLocalOf<MarkdownImageResolver?> { null }
 
 private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
 private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
@@ -230,43 +235,78 @@ private fun parseMarkdown(content: String): MarkdownParseResult {
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
+private const val MARKDOWN_PARSE_DEBOUNCE_MS = 120L
+
 @Composable
 fun MarkdownBlock(
     content: String,
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
-    onClickCitation: (String) -> Unit = {}
+    onClickCitation: (String) -> Unit = {},
+    imageResolver: MarkdownImageResolver? = null,
+    useLazyLayout: Boolean = false,
 ) {
-    var (data, setData) = remember { mutableStateOf(parseMarkdown(content)) }
+    var data by remember { mutableStateOf<MarkdownParseResult?>(null) }
 
-    // 监听内容变化，重新解析AST树
-    // 这里在后台线程解析AST树, 防止频繁更新的时候掉帧
-    val updatedContent by rememberUpdatedState(content)
-    LaunchedEffect(Unit) {
-        snapshotFlow { updatedContent }
-            .distinctUntilChanged()
-            .mapLatest { parseMarkdown(it) }
-            .catch { exception -> exception.printStackTrace() }
-            .flowOn(Dispatchers.Default)
-            .collect { setData(it) }
+    LaunchedEffect(content) {
+        val debounce = data != null
+        data = null
+        if (debounce) delay(MARKDOWN_PARSE_DEBOUNCE_MS)
+        data = withContext(Dispatchers.Default) {
+            parseMarkdown(content)
+        }
     }
 
-    if (data.hasHtml) {
-        MarkdownNew(
-            content = content,
-            modifier = modifier,
-            style = style,
-            onClickCitation = onClickCitation,
-        )
-    } else {
-        ProvideTextStyle(style) {
-            Column(
-                modifier = modifier.padding(horizontal = 4.dp)
+    CompositionLocalProvider(LocalMarkdownImageResolver provides imageResolver) {
+        val parsedData = data
+        if (parsedData == null) {
+            Box(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                data.astTree.children.fastForEach { child ->
-                    MarkdownNode(
-                        node = child, content = data.preprocessed, onClickCitation = onClickCitation
-                    )
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            }
+        } else if (parsedData.hasHtml) {
+            MarkdownNew(
+                content = content,
+                modifier = modifier,
+                style = style,
+                onClickCitation = onClickCitation,
+                imageResolver = imageResolver,
+                useLazyLayout = useLazyLayout,
+            )
+        } else {
+            ProvideTextStyle(style) {
+                if (useLazyLayout) {
+                    val children = parsedData.astTree.children
+                    LazyColumn(
+                        modifier = modifier.padding(horizontal = 4.dp),
+                    ) {
+                        items(
+                            count = children.size,
+                            key = { index -> index },
+                        ) { index ->
+                            MarkdownNode(
+                                node = children[index],
+                                content = parsedData.preprocessed,
+                                onClickCitation = onClickCitation,
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = modifier.padding(horizontal = 4.dp)
+                    ) {
+                        parsedData.astTree.children.fastForEach { child ->
+                            MarkdownNode(
+                                node = child,
+                                content = parsedData.preprocessed,
+                                onClickCitation = onClickCitation,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -523,9 +563,8 @@ private fun MarkdownNode(
             Column(
                 modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 这里可以使用Coil等图片加载库加载图片
-                ZoomableAsyncImage(
-                    model = imageUrl,
+                ResolvedMarkdownImage(
+                    source = imageUrl,
                     contentDescription = altText,
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -642,6 +681,30 @@ private fun MarkdownNode(
             }
         }
     }
+}
+
+@Composable
+internal fun ResolvedMarkdownImage(
+    source: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+) {
+    val resolver = LocalMarkdownImageResolver.current
+    var model by remember(source, resolver) {
+        mutableStateOf(if (resolver == null) source else null)
+    }
+    LaunchedEffect(source, resolver) {
+        model = if (resolver == null) {
+            source
+        } else {
+            runCatching { resolver(source) }.getOrNull()
+        }
+    }
+    ZoomableAsyncImage(
+        model = model,
+        contentDescription = contentDescription,
+        modifier = modifier,
+    )
 }
 
 @Composable

@@ -287,6 +287,26 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun resolvePreviewFile(entry: WorkspaceFileEntry, onReady: (File) -> Unit) {
+        val area = state.value.area
+        viewModelScope.launch {
+            runCatching { repository.resolvePreviewFile(id, area, entry.path) }
+                .onSuccess(onReady)
+                .onFailure { error ->
+                    _state.update { it.copy(error = error.message ?: "无法预览图片") }
+                }
+        }
+    }
+
+    fun resolvePreviewFileSilently(entry: WorkspaceFileEntry, onReady: (File?) -> Unit) {
+        val area = state.value.area
+        viewModelScope.launch {
+            runCatching { repository.resolvePreviewFile(id, area, entry.path) }
+                .onSuccess(onReady)
+                .onFailure { onReady(null) }
+        }
+    }
+
     fun setToolApproval(toolName: String, needsApproval: Boolean) {
         viewModelScope.launch {
             val workspace = state.value.workspace ?: return@launch
