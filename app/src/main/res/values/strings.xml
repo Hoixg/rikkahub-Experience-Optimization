@@ -1196,6 +1196,7 @@
   <string name="workspace_detail_title">Workspace Details</string>
   <string name="workspace_detail_tab_basic">Basic</string>
   <string name="workspace_detail_tab_files">Files</string>
+  <string name="workspace_open_files">Open workspace files</string>
   <string name="workspace_detail_import_file">Import File</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs Installation Failed</string>
   <string name="workspace_detail_delete_directory">Delete Directory</string>
@@ -1219,8 +1220,6 @@
   <string name="workspace_detail_tool_delete_file">Delete File</string>
   <string name="workspace_detail_tool_move_file">Move File</string>
   <string name="workspace_detail_tool_shell">Execute Command</string>
-  <string name="workspace_detail_tool_export_file">Export File to Phone</string>
-  <string name="workspace_detail_tool_import_file">Import File from Phone</string>
   <string name="workspace_detail_tool_terminal_start">Open Terminal Session</string>
   <string name="workspace_detail_tool_terminal_send">Send Terminal Input</string>
   <string name="workspace_detail_tool_terminal_read">Read Terminal Screen</string>

@@ -10,6 +10,8 @@ import org.koin.android.ext.android.inject
 class ToolHostActivity : AppCompatActivity() {
     private val buffer: SafPickerResultBuffer by inject()
     private var requestId = ""
+    private var pickerLaunched = false
+    private var resultCompleted = false
 
     private val directoryPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         val result = if (uri == null) {
@@ -23,17 +25,21 @@ class ToolHostActivity : AppCompatActivity() {
                 SafPickerResult.Error("无法保存文件夹授权：${e.message ?: "系统拒绝了授权"}")
             }
         }
-        buffer.complete(requestId, result)
-        finish()
+        completeResult(result)
     }
 
     private val openFilePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        buffer.complete(requestId, uri?.let { SafPickerResult.FilePicked(it.toString()) } ?: SafPickerResult.Cancelled)
-        finish()
+        completeResult(uri?.let { SafPickerResult.FilePicked(it.toString()) } ?: SafPickerResult.Cancelled)
     }
 
     private val createFilePicker = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
-        buffer.complete(requestId, uri?.let { SafPickerResult.FilePicked(it.toString()) } ?: SafPickerResult.Cancelled)
+        completeResult(uri?.let { SafPickerResult.FilePicked(it.toString()) } ?: SafPickerResult.Cancelled)
+    }
+
+    private fun completeResult(result: SafPickerResult) {
+        if (resultCompleted) return
+        resultCompleted = true
+        buffer.complete(requestId, result)
         finish()
     }
 
@@ -41,6 +47,11 @@ class ToolHostActivity : AppCompatActivity() {
         super.onCreate(state)
         requestId = intent.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
         if (requestId.isBlank()) { finish(); return }
+        pickerLaunched = state?.getBoolean(KEY_PICKER_LAUNCHED, false) == true
+        if (pickerLaunched) return
+
+        // Activity recreation while DocumentsUI is open must not launch a second picker.
+        pickerLaunched = true
         val initial = intent.getStringExtra(EXTRA_INITIAL_URI)?.let(Uri::parse)
         // Existing grant_directory_access callers do not pass a mode; keep them on the original tree picker.
         val mode = intent.getStringExtra(EXTRA_MODE).orEmpty().ifBlank { MODE_DIRECTORY }
@@ -55,9 +66,22 @@ class ToolHostActivity : AppCompatActivity() {
                 else -> error("未知文件选择模式")
             }
         }.onFailure {
-            buffer.complete(requestId, SafPickerResult.Error("无法打开系统文件夹选择器：${it.message ?: "未知错误"}"))
-            finish()
+            completeResult(SafPickerResult.Error("无法打开系统文件夹选择器：${it.message ?: "未知错误"}"))
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(KEY_PICKER_LAUNCHED, pickerLaunched)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onDestroy() {
+        // Covers Back/task removal when DocumentsUI does not deliver a result callback.
+        if (!isChangingConfigurations && pickerLaunched && !resultCompleted && requestId.isNotBlank()) {
+            resultCompleted = true
+            buffer.complete(requestId, SafPickerResult.Cancelled)
+        }
+        super.onDestroy()
     }
 
     companion object {
@@ -69,5 +93,6 @@ class ToolHostActivity : AppCompatActivity() {
         const val MODE_DIRECTORY = "directory"
         const val MODE_OPEN_FILE = "open_file"
         const val MODE_CREATE_FILE = "create_file"
+        private const val KEY_PICKER_LAUNCHED = "picker_launched"
     }
 }

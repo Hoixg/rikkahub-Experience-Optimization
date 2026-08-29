@@ -82,6 +82,11 @@ esac
 
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
+# Keep native CMake/Ninja builds within two CPU cores.
+if [ -z "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]; then
+    CMAKE_BUILD_PARALLEL_LEVEL=2
+    export CMAKE_BUILD_PARALLEL_LEVEL
+fi
 
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then

@@ -141,6 +141,18 @@ class GenerationHandler(
                 it.canResumeExecution
             } ?: emptyList()
 
+            // Do not start a new model turn while an approval is still pending.
+            // Otherwise the pending tool can be orphaned and requested again.
+            if (pendingTools.isEmpty()) {
+                val lastHasPending = messages.lastOrNull()?.parts?.any { part ->
+                    part is UIMessagePart.Tool && part.isPending
+                } == true
+                if (lastHasPending) {
+                    Log.i(TAG, "generateText: last message has Pending tools; waiting for approval, not regenerating")
+                    break
+                }
+            }
+
             val toolsToProcess: List<UIMessagePart.Tool>
 
             // Skip generation if we have approved/denied tool calls to handle

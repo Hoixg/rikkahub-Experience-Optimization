@@ -503,7 +503,10 @@ class RouteActivity : ComponentActivity() {
                             }
 
                             entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
+                                WorkspaceDetailPage(
+                                    id = key.id,
+                                    openFiles = key.openFiles,
+                                )
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
@@ -705,7 +708,10 @@ sealed interface Screen : NavKey {
     data object Workspaces : Screen
 
     @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
+    data class WorkspaceDetail(
+        val id: String,
+        val openFiles: Boolean = false,
+    ) : Screen
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen

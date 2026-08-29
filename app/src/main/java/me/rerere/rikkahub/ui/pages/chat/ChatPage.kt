@@ -60,6 +60,7 @@ import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
@@ -272,9 +273,13 @@ private fun ChatPageContent(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val workspaceRepository: WorkspaceRepository = koinInject()
+    val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
     val assistant = setting.getCurrentAssistant()
+    val boundWorkspace = remember(workspaces, assistant.workspaceId) {
+        workspaces.find { it.id == assistant.workspaceId?.toString() }
+    }
     var showFilesSheet by remember { mutableStateOf(false) }
     val attachmentPickerActions = rememberChatAttachmentPickerActions(
         inputState = inputState,
@@ -329,6 +334,17 @@ private fun ChatPageContent(
                     settings = setting,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
+                    workspace = boundWorkspace,
+                    onWorkspaceClick = {
+                        boundWorkspace?.let {
+                            navController.navigate(
+                                Screen.WorkspaceDetail(
+                                    id = it.id,
+                                    openFiles = true,
+                                )
+                            )
+                        }
+                    },
                     onCancelClick = {
                         vm.stopGeneration()
                     },

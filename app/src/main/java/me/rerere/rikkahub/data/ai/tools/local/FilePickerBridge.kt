@@ -17,6 +17,7 @@ suspend fun launchToolFilePicker(
     mode: String,
     mimeType: String = "*/*",
     suggestedName: String = "exported_file",
+    initialUri: String? = null,
 ): SafPickerResult {
     val requestId = UUID.randomUUID().toString()
     val deferred = buffer.register(requestId)
@@ -25,6 +26,9 @@ suspend fun launchToolFilePicker(
         putExtra(ToolHostActivity.EXTRA_MODE, mode)
         putExtra(ToolHostActivity.EXTRA_MIME_TYPE, mimeType)
         putExtra(ToolHostActivity.EXTRA_SUGGESTED_NAME, suggestedName)
+        if (!initialUri.isNullOrBlank()) {
+            putExtra(ToolHostActivity.EXTRA_INITIAL_URI, initialUri)
+        }
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
