@@ -21,8 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +28,6 @@ import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -47,7 +44,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,9 +84,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.hugeicons.HugeIcons
@@ -235,8 +236,6 @@ private fun parseMarkdown(content: String): MarkdownParseResult {
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtml())
 }
 
-private const val MARKDOWN_PARSE_DEBOUNCE_MS = 120L
-
 @Composable
 fun MarkdownBlock(
     content: String,
@@ -244,68 +243,37 @@ fun MarkdownBlock(
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {},
     imageResolver: MarkdownImageResolver? = null,
-    useLazyLayout: Boolean = false,
 ) {
-    var data by remember { mutableStateOf<MarkdownParseResult?>(null) }
+    var (data, setData) = remember { mutableStateOf(parseMarkdown(content)) }
 
-    LaunchedEffect(content) {
-        val debounce = data != null
-        data = null
-        if (debounce) delay(MARKDOWN_PARSE_DEBOUNCE_MS)
-        data = withContext(Dispatchers.Default) {
-            parseMarkdown(content)
-        }
+    val updatedContent by rememberUpdatedState(content)
+    LaunchedEffect(Unit) {
+        snapshotFlow { updatedContent }
+            .distinctUntilChanged()
+            .mapLatest { parseMarkdown(it) }
+            .catch { exception -> exception.printStackTrace() }
+            .flowOn(Dispatchers.Default)
+            .collect { setData(it) }
     }
 
     CompositionLocalProvider(LocalMarkdownImageResolver provides imageResolver) {
-        val parsedData = data
-        if (parsedData == null) {
-            Box(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-            }
-        } else if (parsedData.hasHtml) {
+        if (data.hasHtml) {
             MarkdownNew(
                 content = content,
                 modifier = modifier,
                 style = style,
                 onClickCitation = onClickCitation,
                 imageResolver = imageResolver,
-                useLazyLayout = useLazyLayout,
             )
         } else {
             ProvideTextStyle(style) {
-                if (useLazyLayout) {
-                    val children = parsedData.astTree.children
-                    LazyColumn(
-                        modifier = modifier.padding(horizontal = 4.dp),
-                    ) {
-                        items(
-                            count = children.size,
-                            key = { index -> index },
-                        ) { index ->
-                            MarkdownNode(
-                                node = children[index],
-                                content = parsedData.preprocessed,
-                                onClickCitation = onClickCitation,
-                            )
-                        }
-                    }
-                } else {
-                    Column(
-                        modifier = modifier.padding(horizontal = 4.dp)
-                    ) {
-                        parsedData.astTree.children.fastForEach { child ->
-                            MarkdownNode(
-                                node = child,
-                                content = parsedData.preprocessed,
-                                onClickCitation = onClickCitation,
-                            )
-                        }
+                Column(
+                    modifier = modifier.padding(horizontal = 4.dp)
+                ) {
+                    data.astTree.children.fastForEach { child ->
+                        MarkdownNode(
+                            node = child, content = data.preprocessed, onClickCitation = onClickCitation
+                        )
                     }
                 }
             }

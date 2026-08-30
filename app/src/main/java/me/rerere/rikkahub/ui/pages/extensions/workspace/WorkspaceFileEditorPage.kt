@@ -211,7 +211,6 @@ fun WorkspaceFileEditorPage(
                                     .fillMaxSize()
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 imageResolver = imageResolver,
-                                useLazyLayout = true,
                             )
                         }
                     }
