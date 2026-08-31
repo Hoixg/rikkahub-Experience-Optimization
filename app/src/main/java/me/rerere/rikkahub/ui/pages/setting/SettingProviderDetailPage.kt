@@ -100,6 +100,8 @@ import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.provider.apiKeyInfos
+import me.rerere.ai.provider.withApiKeyInfos
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
@@ -244,6 +246,15 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         onEdit = {
                             draftProvider = it
                         },
+                        onApiKeySelected = {
+                            draftProvider = it
+                            val selectedIndex = when (it) {
+                                is ProviderSetting.OpenAI -> it.selectedApiKeyIndex
+                                is ProviderSetting.Google -> it.selectedApiKeyIndex
+                                is ProviderSetting.Claude -> it.selectedApiKeyIndex
+                            }
+                            onEdit(provider.withApiKeyInfos(provider.apiKeyInfos(), selectedIndex))
+                        },
                         onSave = {
                             draftProvider = it
                             onEdit(it)
@@ -276,6 +287,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
 private fun SettingProviderConfigPage(
     provider: ProviderSetting,
     onEdit: (ProviderSetting) -> Unit,
+    onApiKeySelected: (ProviderSetting) -> Unit,
     onSave: (ProviderSetting) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -295,7 +307,11 @@ private fun SettingProviderConfigPage(
             onEdit = {
                 internalProvider = it
                 onEdit(it)
-            }
+            },
+            onApiKeySelected = {
+                internalProvider = it
+                onApiKeySelected(it)
+            },
         )
 
         if (internalProvider is ProviderSetting.OpenAI) {

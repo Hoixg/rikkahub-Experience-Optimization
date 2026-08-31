@@ -74,7 +74,8 @@ import kotlin.reflect.KClass
 fun ProviderConfigure(
     provider: ProviderSetting,
     modifier: Modifier = Modifier,
-    onEdit: (provider: ProviderSetting) -> Unit
+    onApiKeySelected: ((provider: ProviderSetting) -> Unit)? = null,
+    onEdit: (provider: ProviderSetting) -> Unit,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -95,9 +96,21 @@ fun ProviderConfigure(
         }
 
         when (provider) {
-            is ProviderSetting.OpenAI -> ProviderConfigureOpenAI(provider, onEdit)
-            is ProviderSetting.Google -> ProviderConfigureGoogle(provider, onEdit)
-            is ProviderSetting.Claude -> ProviderConfigureClaude(provider, onEdit)
+            is ProviderSetting.OpenAI -> ProviderConfigureOpenAI(
+                provider = provider,
+                onEdit = onEdit,
+                onApiKeySelected = onApiKeySelected ?: onEdit,
+            )
+            is ProviderSetting.Google -> ProviderConfigureGoogle(
+                provider = provider,
+                onEdit = onEdit,
+                onApiKeySelected = onApiKeySelected ?: onEdit,
+            )
+            is ProviderSetting.Claude -> ProviderConfigureClaude(
+                provider = provider,
+                onEdit = onEdit,
+                onApiKeySelected = onApiKeySelected ?: onEdit,
+            )
         }
     }
 }
@@ -229,6 +242,7 @@ private val OFFICIAL_PROVIDER_HOSTS = setOf(
 private fun ApiKeyEditor(
     provider: ProviderSetting,
     onEdit: (ProviderSetting) -> Unit,
+    onApiKeySelected: (ProviderSetting) -> Unit,
 ) {
     val entries = provider.apiKeyInfos()
     val selectedIndex = when (provider) {
@@ -324,7 +338,9 @@ private fun ApiKeyEditor(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onEdit(provider.withApiKeyInfos(entries, index)) },
+                        .clickable {
+                            onApiKeySelected(provider.withApiKeyInfos(entries, index))
+                        },
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 1.dp,
                 ) {
@@ -441,7 +457,8 @@ private fun maskApiKey(key: String): String = when {
 @Composable
 private fun ProviderConfigureOpenAI(
     provider: ProviderSetting.OpenAI,
-    onEdit: (provider: ProviderSetting.OpenAI) -> Unit
+    onEdit: (provider: ProviderSetting.OpenAI) -> Unit,
+    onApiKeySelected: (provider: ProviderSetting) -> Unit,
 ) {
     val toaster = LocalToaster.current
 
@@ -454,9 +471,11 @@ private fun ProviderConfigureOpenAI(
         modifier = Modifier.fillMaxWidth(),
     )
 
-    ApiKeyEditor(provider) { updated ->
-        onEdit(updated as ProviderSetting.OpenAI)
-    }
+    ApiKeyEditor(
+        provider = provider,
+        onEdit = { updated -> onEdit(updated as ProviderSetting.OpenAI) },
+        onApiKeySelected = onApiKeySelected,
+    )
 
     OutlinedTextField(
         value = provider.baseUrl,
@@ -522,7 +541,8 @@ private fun ProviderConfigureOpenAI(
 @Composable
 private fun ProviderConfigureClaude(
     provider: ProviderSetting.Claude,
-    onEdit: (provider: ProviderSetting.Claude) -> Unit
+    onEdit: (provider: ProviderSetting.Claude) -> Unit,
+    onApiKeySelected: (provider: ProviderSetting) -> Unit,
 ) {
     provider.description()
 
@@ -534,9 +554,11 @@ private fun ProviderConfigureClaude(
         maxLines = 3,
     )
 
-    ApiKeyEditor(provider) { updated ->
-        onEdit(updated as ProviderSetting.Claude)
-    }
+    ApiKeyEditor(
+        provider = provider,
+        onEdit = { updated -> onEdit(updated as ProviderSetting.Claude) },
+        onApiKeySelected = onApiKeySelected,
+    )
 
     OutlinedTextField(
         value = provider.baseUrl,
@@ -598,7 +620,8 @@ private fun ProviderConfigureClaude(
 @Composable
 private fun ProviderConfigureGoogle(
     provider: ProviderSetting.Google,
-    onEdit: (provider: ProviderSetting.Google) -> Unit
+    onEdit: (provider: ProviderSetting.Google) -> Unit,
+    onApiKeySelected: (provider: ProviderSetting) -> Unit,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -635,9 +658,11 @@ private fun ProviderConfigureGoogle(
     )
 
     if (!(provider.vertexAI && provider.useServiceAccount)) {
-        ApiKeyEditor(provider) { updated ->
-            onEdit(updated as ProviderSetting.Google)
-        }
+        ApiKeyEditor(
+            provider = provider,
+            onEdit = { updated -> onEdit(updated as ProviderSetting.Google) },
+            onApiKeySelected = onApiKeySelected,
+        )
     }
 
     if (!provider.vertexAI) {
