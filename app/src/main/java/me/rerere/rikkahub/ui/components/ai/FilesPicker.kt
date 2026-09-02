@@ -172,9 +172,6 @@ internal fun FilesPicker(
             headlineContent = {
                 Text(stringResource(R.string.plan_mode_title))
             },
-            supportingContent = {
-                Text(settings.planModeAbbreviation)
-            },
             trailingContent = {
                 Switch(
                     checked = conversation.planModeEnabled,

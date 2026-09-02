@@ -110,7 +110,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 onPromptChange = {
                     vm.updateSettings(
                         settings.copy(
-                            planModeAbbreviation = it.trim().take(8)
+                            planModeAbbreviation = it.trim().take(8).ifBlank {
+                                DEFAULT_PLAN_MODE_ABBREVIATION
+                            }
                         )
                     )
                 },

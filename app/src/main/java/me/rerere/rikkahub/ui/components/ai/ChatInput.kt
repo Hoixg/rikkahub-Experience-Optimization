@@ -231,6 +231,8 @@ fun ChatInput(
                     TextInputRow(
                         state = state,
                         completionProviders = completionProviders,
+                        planModeEnabled = planModeEnabled,
+                        planModeAbbreviation = planModeAbbreviation,
                         onSendMessage = { sendMessage() },
                     )
 
@@ -297,10 +299,6 @@ fun ChatInput(
 
                             if (workspace != null) {
                                 WorkspaceButton(onClick = onWorkspaceClick)
-                            }
-
-                            if (planModeEnabled) {
-                                PlanModeButton(abbreviation = planModeAbbreviation)
                             }
 
                         }
@@ -386,24 +384,6 @@ private fun WorkspaceButton(
 }
 
 @Composable
-private fun PlanModeButton(abbreviation: String) {
-    ToggleSurface(
-        checked = true,
-        onClick = {},
-        modifier = Modifier.testTag("plan_mode_button"),
-    ) {
-        Text(
-            text = abbreviation,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 private fun SendButton(
     loading: Boolean,
     empty: Boolean,
@@ -482,6 +462,8 @@ private fun ActionIconButton(
 private fun TextInputRow(
     state: ChatInputState,
     completionProviders: List<ChatCompletionProvider>,
+    planModeEnabled: Boolean,
+    planModeAbbreviation: String,
     onSendMessage: () -> Unit,
 ) {
     val settings = LocalSettings.current
@@ -617,7 +599,13 @@ private fun TextInputRow(
                 },
             shape = MaterialTheme.shapes.largeIncreased,
             placeholder = {
-                Text(stringResource(R.string.chat_input_placeholder))
+                Text(
+                    text = if (planModeEnabled) {
+                        planModeAbbreviation
+                    } else {
+                        stringResource(R.string.chat_input_placeholder)
+                    }
+                )
             },
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
             keyboardOptions = KeyboardOptions(
@@ -657,7 +645,11 @@ private fun TextInputRow(
             } else null,
         )
         if (isFullScreen) {
-            FullScreenEditor(state = state) {
+            FullScreenEditor(
+                state = state,
+                planModeEnabled = planModeEnabled,
+                planModeAbbreviation = planModeAbbreviation,
+            ) {
                 isFullScreen = false
             }
         }
@@ -795,7 +787,10 @@ private fun QuickMessageButton(
 
 @Composable
 private fun FullScreenEditor(
-    state: ChatInputState, onDone: () -> Unit
+    state: ChatInputState,
+    planModeEnabled: Boolean,
+    planModeAbbreviation: String,
+    onDone: () -> Unit,
 ) {
     BasicAlertDialog(
         onDismissRequest = {
@@ -840,7 +835,13 @@ private fun FullScreenEditor(
                             .fillMaxSize(),
                         shape = RoundedCornerShape(32.dp),
                         placeholder = {
-                            Text(stringResource(R.string.chat_input_placeholder))
+                            Text(
+                                if (planModeEnabled) {
+                                    planModeAbbreviation
+                                } else {
+                                    stringResource(R.string.chat_input_placeholder)
+                                }
+                            )
                         },
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Sentences,
