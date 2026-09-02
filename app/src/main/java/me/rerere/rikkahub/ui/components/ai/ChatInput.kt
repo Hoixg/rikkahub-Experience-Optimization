@@ -127,6 +127,8 @@ fun ChatInput(
     modifier: Modifier = Modifier,
     completionProviders: List<ChatCompletionProvider> = emptyList(),
     workspace: WorkspaceEntity? = null,
+    planModeEnabled: Boolean = false,
+    planModeAbbreviation: String = "PLAN",
     onWorkspaceClick: () -> Unit = {},
     onUpdateChatModel: (Model) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
@@ -297,6 +299,10 @@ fun ChatInput(
                                 WorkspaceButton(onClick = onWorkspaceClick)
                             }
 
+                            if (planModeEnabled) {
+                                PlanModeButton(abbreviation = planModeAbbreviation)
+                            }
+
                         }
 
                         ActionIconButton(
@@ -376,6 +382,24 @@ private fun WorkspaceButton(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PlanModeButton(abbreviation: String) {
+    ToggleSurface(
+        checked = true,
+        onClick = {},
+        modifier = Modifier.testTag("plan_mode_button"),
+    ) {
+        Text(
+            text = abbreviation,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -26,7 +26,7 @@ import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.common.android.appTempFolder
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.findRequestProvider
 import me.rerere.rikkahub.data.db.entity.GenMediaEntity
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.repository.GenMediaRepository
@@ -146,7 +146,7 @@ class ImgGenVM(
                 val model = settings.findModelById(settings.imageGenerationModelId)
                     ?: throw IllegalStateException("No model selected")
 
-                val provider = model.findProvider(settings.providers)
+                val provider = model.findRequestProvider(settings.providers)
                     ?: throw IllegalStateException("Provider not found")
 
                 val requestPrompt = _prompt.value
@@ -190,7 +190,7 @@ class ImgGenVM(
                 val model = settings.findModelById(settings.imageGenerationModelId)
                     ?: throw IllegalStateException("No model selected")
 
-                val provider = model.findProvider(settings.providers)
+                val provider = model.findRequestProvider(settings.providers)
                     ?: throw IllegalStateException("Provider not found")
 
                 val requestPrompt = _prompt.value

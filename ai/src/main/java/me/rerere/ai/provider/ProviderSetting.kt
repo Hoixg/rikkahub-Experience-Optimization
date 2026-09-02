@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import java.security.MessageDigest
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -322,6 +323,40 @@ fun ProviderSetting.selectedApiKey(): String {
 
 /** Explicitly named alias for call sites where an empty key is a valid fallback. */
 fun ProviderSetting.selectedApiKeyOrBlank(): String = selectedApiKey()
+
+/**
+ * Creates a transient request setting with one explicit key selected. The persisted
+ * provider setting and its key rotation state are never changed.
+ */
+fun ProviderSetting.withRequestApiKey(key: String): ProviderSetting {
+    val normalizedKey = key.trim()
+    return when (this) {
+        is ProviderSetting.OpenAI -> copy(
+            apiKey = normalizedKey,
+            apiKeys = listOf(normalizedKey),
+            selectedApiKeyIndex = 0,
+            apiKeyInfos = listOf(ApiKeyInfo(key = normalizedKey, name = "Model key")),
+        )
+        is ProviderSetting.Google -> copy(
+            apiKey = normalizedKey,
+            apiKeys = listOf(normalizedKey),
+            selectedApiKeyIndex = 0,
+            apiKeyInfos = listOf(ApiKeyInfo(key = normalizedKey, name = "Model key")),
+        )
+        is ProviderSetting.Claude -> copy(
+            apiKey = normalizedKey,
+            apiKeys = listOf(normalizedKey),
+            selectedApiKeyIndex = 0,
+            apiKeyInfos = listOf(ApiKeyInfo(key = normalizedKey, name = "Model key")),
+        )
+    }
+}
+
+/** Stable, non-secret identifier used when a model pins one saved provider key. */
+fun apiKeyReference(key: String): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(key.trim().toByteArray())
+    return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
 
 /** Returns a provider with normalized keys and the legacy field synchronized. */
 fun ProviderSetting.withApiKeys(keys: List<String>, selectedIndex: Int = 0): ProviderSetting {

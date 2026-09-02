@@ -15,6 +15,7 @@ class TransformerContext(
     val settings: Settings,
     val conversationModeInjectionIds: Set<Uuid> = emptySet(),
     val conversationLorebookIds: Set<Uuid> = emptySet(),
+    val planModeEnabled: Boolean = false,
     val processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     val workspaceCwd: String? = null,
 )
@@ -69,6 +70,7 @@ suspend fun List<UIMessage>.transforms(
     settings: Settings,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
+    planModeEnabled: Boolean = false,
     processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     workspaceCwd: String? = null,
 ): List<UIMessage> {
@@ -79,6 +81,7 @@ suspend fun List<UIMessage>.transforms(
         settings = settings,
         conversationModeInjectionIds = conversationModeInjectionIds,
         conversationLorebookIds = conversationLorebookIds,
+        planModeEnabled = planModeEnabled,
         processingStatus = processingStatus,
         workspaceCwd = workspaceCwd,
     )

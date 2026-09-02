@@ -32,6 +32,8 @@ import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_ABBREVIATION
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_PROMPT
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.ui.components.ai.ReasoningButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -91,6 +93,32 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 onResetPrompt = { vm.updateSettings(settings.copy(compressPrompt = DEFAULT_COMPRESS_PROMPT)) },
             )
         }
+        item {
+            PromptSettingItem(
+                title = stringResource(R.string.setting_model_page_prompt_plan_mode),
+                promptDescription = stringResource(R.string.setting_model_page_plan_mode_prompt_desc),
+                promptValue = settings.planModePrompt,
+                onPromptChange = { vm.updateSettings(settings.copy(planModePrompt = it)) },
+                onResetPrompt = { vm.updateSettings(settings.copy(planModePrompt = DEFAULT_PLAN_MODE_PROMPT)) },
+            )
+        }
+        item {
+            PromptSettingItem(
+                title = stringResource(R.string.setting_model_page_plan_mode_abbreviation),
+                promptDescription = stringResource(R.string.setting_model_page_plan_mode_abbreviation_desc),
+                promptValue = settings.planModeAbbreviation,
+                onPromptChange = {
+                    vm.updateSettings(
+                        settings.copy(
+                            planModeAbbreviation = it.trim().take(8)
+                        )
+                    )
+                },
+                onResetPrompt = { vm.updateSettings(settings.copy(planModeAbbreviation = DEFAULT_PLAN_MODE_ABBREVIATION)) },
+                settingLabel = stringResource(R.string.setting_model_page_plan_mode_abbreviation),
+                maxLines = 1,
+            )
+        }
     }
 }
 
@@ -101,15 +129,17 @@ private fun PromptSettingItem(
     promptValue: String,
     onPromptChange: (String) -> Unit,
     onResetPrompt: () -> Unit,
+    settingLabel: String? = null,
     reasoningLevel: ReasoningLevel? = null,
     onUpdateReasoningLevel: ((ReasoningLevel) -> Unit)? = null,
+    maxLines: Int = 15,
 ) {
     var showEditor by remember { mutableStateOf(false) }
 
     CardGroup(title = { Text(title) }) {
         item(
             onClick = { showEditor = true },
-            headlineContent = { Text(stringResource(R.string.setting_model_page_prompt)) },
+            headlineContent = { Text(settingLabel ?: stringResource(R.string.setting_model_page_prompt)) },
             trailingContent = {
                 Icon(
                     HugeIcons.ArrowRight01,
@@ -155,7 +185,7 @@ private fun PromptSettingItem(
                     value = promptValue,
                     onValueChange = onPromptChange,
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 15,
+                    maxLines = maxLines,
                 )
                 TextButton(onClick = onResetPrompt) {
                     Text(stringResource(R.string.setting_model_page_reset_to_default))

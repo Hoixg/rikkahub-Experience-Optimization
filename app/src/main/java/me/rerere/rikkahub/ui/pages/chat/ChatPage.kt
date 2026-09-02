@@ -335,6 +335,8 @@ private fun ChatPageContent(
                     hazeState = hazeState,
                     completionProviders = completionProviders,
                     workspace = boundWorkspace,
+                    planModeEnabled = conversation.planModeEnabled,
+                    planModeAbbreviation = setting.planModeAbbreviation,
                     onWorkspaceClick = {
                         boundWorkspace?.let {
                             navController.navigate(

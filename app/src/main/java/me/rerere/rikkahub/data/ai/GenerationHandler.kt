@@ -44,7 +44,7 @@ import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.ai.tools.buildMemoryTools
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.findRequestProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -95,9 +95,10 @@ class GenerationHandler(
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
+        planModeEnabled: Boolean = false,
         workspaceCwd: String? = null,
     ): Flow<GenerationChunk> = flow {
-        val provider = model.findProvider(settings.providers) ?: error("Provider not found")
+        val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
 
         var messages: List<UIMessage> = messages
@@ -202,6 +203,7 @@ class GenerationHandler(
                     conversationId = conversationId,
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
+                    planModeEnabled = planModeEnabled,
                     workspaceCwd = workspaceCwd,
                 )
                 messages = messages.visualTransforms(
@@ -403,6 +405,7 @@ class GenerationHandler(
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
+        planModeEnabled: Boolean = false,
         workspaceCwd: String? = null,
     ) {
         val internalMessages = buildList {
@@ -440,6 +443,7 @@ class GenerationHandler(
             settings = settings,
             conversationModeInjectionIds = conversationModeInjectionIds,
             conversationLorebookIds = conversationLorebookIds,
+            planModeEnabled = planModeEnabled,
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
         )
@@ -571,7 +575,7 @@ class GenerationHandler(
         val compressionModel = settings.findModelById(settings.compressModelId)
             ?: settings.findModelById(settings.chatModelId)
             ?: return null
-        val compressionProvider = compressionModel.findProvider(settings.providers)
+        val compressionProvider = compressionModel.findRequestProvider(settings.providers)
             ?: return null
         val compressionHandler = providerManager.getProviderByType(compressionProvider)
         val content = sourceMessages.joinToString("\\n\\n") {

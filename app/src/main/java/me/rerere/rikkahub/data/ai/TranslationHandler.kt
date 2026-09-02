@@ -16,7 +16,7 @@ import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.findRequestProvider
 import me.rerere.rikkahub.utils.applyPlaceholders
 import java.util.Locale
 
@@ -31,7 +31,7 @@ class TranslationHandler(
     ): Flow<String> = flow {
         val model = settings.providers.findModelById(settings.translateModeId)
             ?: error("Translation model not found")
-        val provider = model.findProvider(settings.providers)
+        val provider = model.findRequestProvider(settings.providers)
             ?: error("Translation provider not found")
 
         val providerHandler = providerManager.getProviderByType(provider)

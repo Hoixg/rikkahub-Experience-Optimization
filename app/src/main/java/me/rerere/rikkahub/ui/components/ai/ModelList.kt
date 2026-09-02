@@ -543,11 +543,29 @@ private fun ColumnScope.ModelList(
                         .padding(bottom = 4.dp, top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = providerSetting.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Surface(
+                        onClick = {
+                            onDismiss()
+                            navController.navigate(Screen.SettingProviderDetail(providerSetting.id.toString()))
+                        },
+                        color = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = providerSetting.name,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Icon(
+                                imageVector = HugeIcons.ArrowRight01,
+                                contentDescription = stringResource(R.string.setting_provider_page_open),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.weight(1f))
 

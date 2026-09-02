@@ -1180,6 +1180,16 @@
   <string name="setting_model_page_prompt_suggestion">Chat Reply Suggestions</string>
   <string name="setting_model_page_prompt_ocr">OCR Recognition</string>
   <string name="setting_model_page_prompt_compress">Context Compression</string>
+  <string name="setting_model_page_prompt_plan_mode">Plan Mode</string>
+  <string name="setting_model_page_plan_mode_prompt_desc">Instructions for planning responses: break down goals, explain assumptions and risks, and wait for confirmation.</string>
+  <string name="setting_model_page_plan_mode_abbreviation">Plan mode abbreviation</string>
+  <string name="setting_model_page_plan_mode_abbreviation_desc">Short label shown in the chat input when plan mode is enabled (up to 8 characters).</string>
+  <string name="setting_provider_page_model_api_key">Model API Key</string>
+  <string name="setting_provider_page_model_api_key_desc">Choose a saved API Key from this model's provider.</string>
+  <string name="setting_provider_page_model_api_key_inherit">Follow provider current Key</string>
+  <string name="setting_provider_page_model_api_key_empty">No saved API Keys. Add one in the provider settings first.</string>
+  <string name="setting_provider_page_open">Open provider settings</string>
+  <string name="plan_mode_title">Plan mode</string>
   <string name="setting_display_page_bubble_opacity_title">Bubble Opacity</string>
   <string name="setting_provider_page_include_history_reasoning">Include History Reasoning</string>
   <string name="assistant_page_gradient_background">Gradient Background</string>

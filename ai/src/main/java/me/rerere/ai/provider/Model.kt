@@ -12,6 +12,8 @@ data class Model(
     val type: ModelType = ModelType.CHAT,
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBodies: List<CustomBody> = emptyList(),
+    /** Optional reference to one of the owning provider's saved API keys. */
+    val apiKeyRef: String? = null,
     val inputModalities: List<Modality> = listOf(Modality.TEXT),
     val outputModalities: List<Modality> = listOf(Modality.TEXT),
     val abilities: List<ModelAbility> = emptyList(),

@@ -28,6 +28,8 @@ object PromptInjectionTransformer : InputMessageTransformer {
             lorebooks = ctx.settings.lorebooks,
             conversationModeInjectionIds = ctx.conversationModeInjectionIds,
             conversationLorebookIds = ctx.conversationLorebookIds,
+            planModeEnabled = ctx.planModeEnabled,
+            planModePrompt = ctx.settings.planModePrompt,
         )
     }
 }
@@ -42,6 +44,8 @@ internal fun transformMessages(
     lorebooks: List<Lorebook>,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
+    planModeEnabled: Boolean = false,
+    planModePrompt: String = "",
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -51,7 +55,18 @@ internal fun transformMessages(
         lorebooks = lorebooks,
         conversationModeInjectionIds = conversationModeInjectionIds,
         conversationLorebookIds = conversationLorebookIds,
-    )
+    ).toMutableList()
+
+    if (planModeEnabled && planModePrompt.isNotBlank()) {
+        injections.add(
+            PromptInjection.ModeInjection(
+                name = "Plan Mode",
+                content = planModePrompt,
+                priority = Int.MIN_VALUE,
+                position = InjectionPosition.AFTER_SYSTEM_PROMPT,
+            )
+        )
+    }
 
     if (injections.isEmpty()) {
         return messages
@@ -59,7 +74,9 @@ internal fun transformMessages(
 
     // 按位置和优先级分组
     val byPosition = injections
-        .sortedByDescending { it.priority }
+        .mapIndexed { index, injection -> index to injection }
+        .sortedWith(compareByDescending<Pair<Int, PromptInjection>> { it.second.priority }.thenBy { it.first })
+        .map { it.second }
         .groupBy { it.position }
 
     // 应用注入

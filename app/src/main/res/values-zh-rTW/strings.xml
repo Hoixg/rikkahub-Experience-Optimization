@@ -1113,6 +1113,16 @@
   <string name="setting_model_page_prompt_suggestion">聊天回覆建議</string>
   <string name="setting_model_page_prompt_ocr">OCR 辨識</string>
   <string name="setting_model_page_prompt_compress">上下文壓縮</string>
+  <string name="setting_model_page_prompt_plan_mode">計劃模式</string>
+  <string name="setting_model_page_plan_mode_prompt_desc">計劃式回答說明：拆解目標、說明假設和風險，並等待確認。</string>
+  <string name="setting_model_page_plan_mode_abbreviation">計劃模式簡寫</string>
+  <string name="setting_model_page_plan_mode_abbreviation_desc">計劃模式啟用時顯示在輸入框中的簡短標籤，最多 8 個字元。</string>
+  <string name="setting_provider_page_model_api_key">指定 API Key</string>
+  <string name="setting_provider_page_model_api_key_desc">選擇此模型使用所屬提供商已儲存的 API Key。</string>
+  <string name="setting_provider_page_model_api_key_inherit">跟隨提供商目前 Key</string>
+  <string name="setting_provider_page_model_api_key_empty">該提供商尚未儲存 API Key，請先在提供商設定中新增。</string>
+  <string name="setting_provider_page_open">開啟提供商設定</string>
+  <string name="plan_mode_title">計劃模式</string>
   <string name="setting_display_page_bubble_opacity_title">氣泡透明度</string>
   <string name="setting_provider_page_include_history_reasoning">回傳歷史思考過程</string>
   <string name="setting_model_page_fast_model">快速模型</string>

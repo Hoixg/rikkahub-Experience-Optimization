@@ -26,7 +26,10 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.apiKeyInfos
+import me.rerere.ai.provider.apiKeyReference
+import me.rerere.ai.provider.selectedApiKey
 import me.rerere.ai.provider.withApiKeyInfos
+import me.rerere.ai.provider.withRequestApiKey
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
@@ -35,6 +38,8 @@ import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.LEARNING_MODE_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_ABBREVIATION
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_PROMPT
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
@@ -103,6 +108,8 @@ class SettingsStore(
         val OCR_PROMPT = stringPreferencesKey("ocr_prompt")
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
+        val PLAN_MODE_PROMPT = stringPreferencesKey("plan_mode_prompt")
+        val PLAN_MODE_ABBREVIATION = stringPreferencesKey("plan_mode_abbreviation")
         val ENABLE_AUTO_COMPACTION = booleanPreferencesKey("enable_auto_compaction")
 
         // 提供商
@@ -187,6 +194,8 @@ class SettingsStore(
                 preferences[OCR_PROMPT] = settings.ocrPrompt
                 preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
                 preferences[COMPRESS_PROMPT] = settings.compressPrompt
+                preferences[PLAN_MODE_PROMPT] = settings.planModePrompt
+                preferences[PLAN_MODE_ABBREVIATION] = settings.planModeAbbreviation.trim().take(8).ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
 
                 preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -258,6 +267,9 @@ class SettingsStore(
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
                 compressModelId = preferences[COMPRESS_MODEL]?.let { Uuid.parse(it) } ?: DEFAULT_AUTO_MODEL_ID,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
+                planModePrompt = preferences[PLAN_MODE_PROMPT] ?: DEFAULT_PLAN_MODE_PROMPT,
+                planModeAbbreviation = preferences[PLAN_MODE_ABBREVIATION]?.trim()?.take(8)?.ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
+                    ?: DEFAULT_PLAN_MODE_ABBREVIATION,
                 enableAutoCompaction = preferences[ENABLE_AUTO_COMPACTION] == true,
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
@@ -356,17 +368,30 @@ class SettingsStore(
                         is ProviderSetting.Claude -> provider.selectedApiKeyIndex
                     }
                     provider.withApiKeyInfos(provider.apiKeyInfos(), selectedIndex).let { normalized ->
+                        val keyReferences = normalized.apiKeyInfos().associate { info ->
+                            apiKeyReference(info.key) to info.key
+                        }
+                        fun normalizeModel(model: Model): Model {
+                            val reference = model.apiKeyRef?.trim()?.takeIf { it.isNotBlank() }
+                            val normalizedReference = reference?.let { candidate ->
+                                when {
+                                    candidate in keyReferences -> candidate
+                                    else -> keyReferences.entries.firstOrNull { it.value == candidate }?.key
+                                }
+                            }
+                            return model.copy(apiKeyRef = normalizedReference)
+                        }
                         when (normalized) {
                             is ProviderSetting.OpenAI -> normalized.copy(
-                                models = normalized.models.distinctBy { model -> model.id }
+                                models = normalized.models.distinctBy { model -> model.id }.map(::normalizeModel)
                             )
 
                             is ProviderSetting.Google -> normalized.copy(
-                                models = normalized.models.distinctBy { model -> model.id }
+                                models = normalized.models.distinctBy { model -> model.id }.map(::normalizeModel)
                             )
 
                             is ProviderSetting.Claude -> normalized.copy(
-                                models = normalized.models.distinctBy { model -> model.id }
+                                models = normalized.models.distinctBy { model -> model.id }.map(::normalizeModel)
                             )
                         }
                     }
@@ -441,6 +466,8 @@ class SettingsStore(
             preferences[OCR_PROMPT] = settings.ocrPrompt
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
+            preferences[PLAN_MODE_PROMPT] = settings.planModePrompt
+            preferences[PLAN_MODE_ABBREVIATION] = settings.planModeAbbreviation.trim().take(8).ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
             preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -595,6 +622,8 @@ data class Settings(
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
     val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
+    val planModePrompt: String = DEFAULT_PLAN_MODE_PROMPT,
+    val planModeAbbreviation: String = DEFAULT_PLAN_MODE_ABBREVIATION,
     /** 全局自动压缩开关，默认关闭；手动压缩不受影响。 */
     val enableAutoCompaction: Boolean = false,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
@@ -771,6 +800,31 @@ fun Model.findProvider(providers: List<ProviderSetting>, checkOverwrite: Boolean
         return providerOverwrite.copyProvider(models = emptyList())
     }
     return provider
+}
+
+/** Resolves the provider used for a model request, including an optional model key reference. */
+fun Model.findRequestProvider(providers: List<ProviderSetting>): ProviderSetting? {
+    val baseProvider = findModelProviderFromList(providers) ?: return null
+    val effectiveProvider = if (providerOverwrite != null) {
+        providerOverwrite.copyProvider(models = emptyList())
+    } else {
+        baseProvider
+    }
+    val requestedKey = apiKeyRef
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { reference ->
+            baseProvider.apiKeyInfos().firstOrNull {
+                apiKeyReference(it.key) == reference || it.key == reference
+            }?.key
+        }
+    return when {
+        providerOverwrite != null -> effectiveProvider.withRequestApiKey(
+            requestedKey ?: baseProvider.selectedApiKey()
+        )
+        requestedKey != null -> effectiveProvider.withRequestApiKey(requestedKey)
+        else -> effectiveProvider
+    }
 }
 
 private fun Model.findModelProviderFromList(providers: List<ProviderSetting>): ProviderSetting? {

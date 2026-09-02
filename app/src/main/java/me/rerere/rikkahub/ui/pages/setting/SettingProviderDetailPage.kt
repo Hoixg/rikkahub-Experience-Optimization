@@ -53,6 +53,7 @@ import androidx.compose.material3.MultiChoiceSegmentedButtonRow
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
@@ -65,6 +66,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -101,6 +104,7 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.apiKeyInfos
+import me.rerere.ai.provider.apiKeyReference
 import me.rerere.ai.provider.withApiKeyInfos
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
@@ -694,6 +698,14 @@ private fun ModelSettingsForm(
                                 onModelChange(model.copy(customBodies = bodies))
                             }
                         )
+
+                        ModelApiKeySelector(
+                            model = model,
+                            parentProvider = parentProvider,
+                            onSelected = { key ->
+                                onModelChange(model.copy(apiKeyRef = key?.let(::apiKeyReference)))
+                            }
+                        )
                     }
                 }
 
@@ -709,6 +721,77 @@ private fun ModelSettingsForm(
             }
         }
     }
+}
+
+@Composable
+private fun ModelApiKeySelector(
+    model: Model,
+    parentProvider: ProviderSetting?,
+    onSelected: (String?) -> Unit,
+) {
+    val entries = remember(parentProvider) { parentProvider?.apiKeyInfos().orEmpty() }
+    var expanded by remember { mutableStateOf(false) }
+    val selected = model.apiKeyRef?.let { ref ->
+        entries.firstOrNull { apiKeyReference(it.key) == ref || it.key == ref }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.setting_provider_page_model_api_key),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = stringResource(R.string.setting_provider_page_model_api_key_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                enabled = parentProvider != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = selected?.let { "${it.name} (${maskModelApiKey(it.key)})" }
+                        ?: stringResource(R.string.setting_provider_page_model_api_key_inherit),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.setting_provider_page_model_api_key_inherit)) },
+                    onClick = {
+                        onSelected(null)
+                        expanded = false
+                    },
+                )
+                entries.forEach { entry ->
+                    DropdownMenuItem(
+                        text = { Text("${entry.name} (${maskModelApiKey(entry.key)})") },
+                        onClick = {
+                            onSelected(entry.key)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            Text(
+                text = stringResource(R.string.setting_provider_page_model_api_key_empty),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun maskModelApiKey(key: String): String = when {
+    key.length <= 8 -> "*".repeat(key.length)
+    else -> key.take(4) + "..." + key.takeLast(4)
 }
 
 @Composable

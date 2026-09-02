@@ -69,7 +69,7 @@ import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.findRequestProvider
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
@@ -121,6 +121,7 @@ internal fun createForkConversation(
     lorebookIds = source.lorebookIds,
     workspaceCwd = source.workspaceCwd,
     folderId = source.folderId,
+    planModeEnabled = source.planModeEnabled,
 )
 
 data class ChatError(
@@ -580,6 +581,7 @@ class ChatService(
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
+                planModeEnabled = conversation.planModeEnabled,
                 workspaceCwd = conversation.workspaceCwd,
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()
@@ -808,7 +810,7 @@ class ChatService(
             val settings = settingsStore.settingsFlow.first()
             val model = settings.findModelById(settings.fastModelId)
                 ?: return@runCatching
-            val provider = model.findProvider(settings.providers) ?: return@runCatching
+            val provider = model.findRequestProvider(settings.providers) ?: return@runCatching
 
             val providerHandler = providerManager.getProviderByType(provider)
             val result = providerHandler.generateText(
@@ -853,7 +855,7 @@ class ChatService(
             if (!settings.enableSuggestion) return@runCatching
             val model = settings.findModelById(settings.fastModelId)
                 ?: return@runCatching
-            val provider = model.findProvider(settings.providers) ?: return@runCatching
+            val provider = model.findRequestProvider(settings.providers) ?: return@runCatching
 
             sessions[conversationId]?.let { session ->
                 updateConversation(
@@ -908,7 +910,7 @@ class ChatService(
         val model = settings.findModelById(settings.compressModelId)
             ?: settings.getCurrentChatModel()
             ?: throw IllegalStateException("No model available for compression")
-        val provider = model.findProvider(settings.providers)
+        val provider = model.findRequestProvider(settings.providers)
             ?: throw IllegalStateException("Provider not found")
 
         val providerHandler = providerManager.getProviderByType(provider)

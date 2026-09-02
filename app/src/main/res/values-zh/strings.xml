@@ -1160,6 +1160,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_model_page_prompt_suggestion">聊天回复建议</string>
   <string name="setting_model_page_prompt_ocr">OCR识别</string>
   <string name="setting_model_page_prompt_compress">上下文压缩</string>
+  <string name="setting_model_page_prompt_plan_mode">计划模式</string>
+  <string name="setting_model_page_plan_mode_prompt_desc">计划式回答说明：拆解目标、说明假设和风险，并等待确认。</string>
+  <string name="setting_model_page_plan_mode_abbreviation">计划模式简写</string>
+  <string name="setting_model_page_plan_mode_abbreviation_desc">计划模式启用时显示在输入框中的简短标签，最多 8 个字符。</string>
+  <string name="setting_provider_page_model_api_key">指定 API Key</string>
+  <string name="setting_provider_page_model_api_key_desc">选择此模型使用所属提供商已保存的 API Key。</string>
+  <string name="setting_provider_page_model_api_key_inherit">跟随提供商当前 Key</string>
+  <string name="setting_provider_page_model_api_key_empty">该提供商尚未保存 API Key，请先在提供商设置中添加。</string>
+  <string name="setting_provider_page_open">打开提供商设置</string>
+  <string name="plan_mode_title">计划模式</string>
   <string name="setting_display_page_bubble_opacity_title">气泡不透明度</string>
   <string name="setting_provider_page_include_history_reasoning">回传历史思考过程</string>
   <string name="setting_model_page_fast_model">快速模型</string>

@@ -30,6 +30,7 @@ import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -63,6 +64,7 @@ import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
 import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
+import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
@@ -159,6 +161,32 @@ internal fun FilesPicker(
                 },
             )
         }
+
+        ListItem(
+            leadingContent = {
+                Icon(
+                    imageVector = HugeIcons.Tools,
+                    contentDescription = stringResource(R.string.plan_mode_title),
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.plan_mode_title))
+            },
+            supportingContent = {
+                Text(settings.planModeAbbreviation)
+            },
+            trailingContent = {
+                Switch(
+                    checked = conversation.planModeEnabled,
+                    onCheckedChange = { enabled ->
+                        onUpdateConversation(conversation.copy(planModeEnabled = enabled))
+                    },
+                )
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            ),
+        )
 
         if (settings.mcpServers.isNotEmpty()) {
             McpPickerListItem(
