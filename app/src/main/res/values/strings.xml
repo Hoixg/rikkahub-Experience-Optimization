@@ -1185,7 +1185,7 @@
   <string name="setting_model_page_plan_mode_abbreviation">Plan mode abbreviation</string>
   <string name="setting_model_page_plan_mode_abbreviation_desc">Short label shown in the chat input when plan mode is enabled (up to 8 characters).</string>
   <string name="setting_provider_page_model_api_key">Model API Key</string>
-  <string name="setting_provider_page_model_api_key_desc">Choose a saved API Key from this model's provider.</string>
+  <string name="setting_provider_page_model_api_key_desc">Choose a saved API Key from this model\'s provider.</string>
   <string name="setting_provider_page_model_api_key_inherit">Follow provider current Key</string>
   <string name="setting_provider_page_model_api_key_empty">No saved API Keys. Add one in the provider settings first.</string>
   <string name="plan_mode_title">Plan mode</string>

@@ -805,8 +805,9 @@ fun Model.findProvider(providers: List<ProviderSetting>, checkOverwrite: Boolean
 /** Resolves the provider used for a model request, including an optional model key reference. */
 fun Model.findRequestProvider(providers: List<ProviderSetting>): ProviderSetting? {
     val baseProvider = findModelProviderFromList(providers) ?: return null
-    val effectiveProvider = if (providerOverwrite != null) {
-        providerOverwrite.copyProvider(models = emptyList())
+    val overrideProvider = providerOverwrite
+    val effectiveProvider = if (overrideProvider != null) {
+        overrideProvider.copyProvider(models = emptyList())
     } else {
         baseProvider
     }
@@ -819,7 +820,7 @@ fun Model.findRequestProvider(providers: List<ProviderSetting>): ProviderSetting
             }?.key
         }
     return when {
-        providerOverwrite != null -> effectiveProvider.withRequestApiKey(
+        overrideProvider != null -> effectiveProvider.withRequestApiKey(
             requestedKey ?: baseProvider.selectedApiKey()
         )
         requestedKey != null -> effectiveProvider.withRequestApiKey(requestedKey)

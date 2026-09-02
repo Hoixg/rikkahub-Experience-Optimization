@@ -299,6 +299,7 @@ private fun ColumnScope.ModelList(
     onDismiss: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val navController = LocalNavController.current
     val settingsStore = koinInject<SettingsStore>()
     val settings = settingsStore.settingsFlow
         .collectAsStateWithLifecycle()
