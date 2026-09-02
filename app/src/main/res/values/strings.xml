@@ -1188,7 +1188,6 @@
   <string name="setting_provider_page_model_api_key_desc">Choose a saved API Key from this model's provider.</string>
   <string name="setting_provider_page_model_api_key_inherit">Follow provider current Key</string>
   <string name="setting_provider_page_model_api_key_empty">No saved API Keys. Add one in the provider settings first.</string>
-  <string name="setting_provider_page_open">Open provider settings</string>
   <string name="plan_mode_title">Plan mode</string>
   <string name="setting_display_page_bubble_opacity_title">Bubble Opacity</string>
   <string name="setting_provider_page_include_history_reasoning">Include History Reasoning</string>

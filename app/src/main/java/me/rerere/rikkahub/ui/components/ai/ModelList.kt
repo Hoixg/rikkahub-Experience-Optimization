@@ -551,20 +551,10 @@ private fun ColumnScope.ModelList(
                         color = Color.Transparent,
                         contentColor = MaterialTheme.colorScheme.primary,
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(
-                                text = providerSetting.name,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            Icon(
-                                imageVector = HugeIcons.ArrowRight01,
-                                contentDescription = stringResource(R.string.setting_provider_page_open),
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
+                        Text(
+                            text = providerSetting.name,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
