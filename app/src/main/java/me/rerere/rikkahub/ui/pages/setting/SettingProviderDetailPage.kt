@@ -96,6 +96,7 @@ import com.dokar.sonner.ToastType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.ApiKeyInfo
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
@@ -757,7 +758,7 @@ private fun ModelApiKeySelector(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = selected?.let { "${it.name} (${maskModelApiKey(it.key)})" }
+                    text = selected?.let(::formatModelApiKeyLabel)
                         ?: stringResource(R.string.setting_provider_page_model_api_key_inherit),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -776,7 +777,7 @@ private fun ModelApiKeySelector(
                 )
                 entries.forEach { entry ->
                     DropdownMenuItem(
-                        text = { Text("${entry.name} (${maskModelApiKey(entry.key)})") },
+                        text = { Text(formatModelApiKeyLabel(entry)) },
                         onClick = {
                             onSelected(entry.key)
                             expanded = false
@@ -795,9 +796,15 @@ private fun ModelApiKeySelector(
     }
 }
 
-private fun maskModelApiKey(key: String): String = when {
-    key.length <= 8 -> "*".repeat(key.length)
-    else -> key.take(4) + "..." + key.takeLast(4)
+internal fun formatModelApiKeyLabel(entry: ApiKeyInfo): String {
+    val name = entry.name.trim().ifBlank { "Key" }
+    val multiplier = entry.multiplier
+    val formattedMultiplier = if (multiplier % 1f == 0f) {
+        multiplier.toInt().toString()
+    } else {
+        multiplier.toString()
+    }
+    return "$name · x$formattedMultiplier"
 }
 
 @Composable
