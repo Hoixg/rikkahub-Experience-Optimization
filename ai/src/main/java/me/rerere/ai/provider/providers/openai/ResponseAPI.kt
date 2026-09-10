@@ -1,12 +1,15 @@
 package me.rerere.ai.provider.providers.openai
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonObject
@@ -47,6 +50,7 @@ import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
 import me.rerere.ai.provider.selectedApiKey
 import me.rerere.ai.util.configureReferHeaders
+import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
 import me.rerere.ai.util.json
 import me.rerere.ai.util.mergeCustomBody
@@ -76,7 +80,7 @@ class ResponseAPI(
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams
-    ): TextGenerationResult {
+    ): TextGenerationResult = withContext(Dispatchers.IO) {
         val requestBody = buildRequestBody(
             providerSetting = providerSetting,
             messages = messages,
@@ -84,7 +88,7 @@ class ResponseAPI(
             stream = false,
         )
         val request = Request.Builder()
-            .url("${providerSetting.baseUrl}/responses")
+            .url("${providerSetting.baseUrl}${providerSetting.responsesPath}")
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
@@ -93,21 +97,22 @@ class ResponseAPI(
             )
             .addHeader("Content-Type", "application/json")
             .configureReferHeaders(providerSetting.baseUrl)
+            .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
         Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
 
-        val response = client.newCall(request).await()
-        if (!response.isSuccessful) {
-            throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
+        // await() waits for the response headers; reading the body can still block.
+        client.newCall(request).await().use { response ->
+            if (!response.isSuccessful) {
+                throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
+            }
+
+            val bodyStr = response.body.string()
+            Log.i(TAG, "generateText: $bodyStr")
+            val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+            parseResponseOutput(bodyJson)
         }
-
-        val bodyStr = response.body?.string() ?: ""
-        Log.i(TAG, "generateText: $bodyStr")
-        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
-        val output = parseResponseOutput(bodyJson)
-
-        return output
     }
 
     override suspend fun streamText(
@@ -122,7 +127,7 @@ class ResponseAPI(
             stream = true,
         )
         val request = Request.Builder()
-            .url("${providerSetting.baseUrl}/responses")
+            .url("${providerSetting.baseUrl}${providerSetting.responsesPath}")
             .headers(params.customHeaders.toHeaders())
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .addHeader(
@@ -130,6 +135,7 @@ class ResponseAPI(
                 "Bearer ${providerSetting.selectedApiKey()}"
             )
             .configureReferHeaders(providerSetting.baseUrl)
+            .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
         Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
@@ -197,7 +203,7 @@ class ResponseAPI(
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
-    }.buffer(Channel.UNLIMITED)
+    }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
     internal fun buildRequestBody(
         providerSetting: ProviderSetting.OpenAI,

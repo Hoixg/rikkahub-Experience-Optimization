@@ -52,20 +52,26 @@ suspend fun createWorkspaceTools(
     cwd: String? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
-    val approvalOverrides = workspaceRepository.getById(workspaceId)?.toolApprovalOverrides().orEmpty()
+    val workspace = workspaceRepository.getById(workspaceId)
+        ?: error("Workspace not found: $workspaceId")
+    val approvalOverrides = workspace.toolApprovalOverrides()
     fun needsApproval(name: String) = resolveWorkspaceToolApproval(name, approvalOverrides)
 
     val shellCwd = cwd?.removePrefix("/workspace/")?.removePrefix("/workspace")
     val terminalSessionManager = getKoin().get<WorkspaceTerminalSessionManager>()
-    val workspaceRoot = workspaceRepository.getById(workspaceId)?.root
-        ?: error("Workspace not found: $workspaceId")
+    val workspaceRoot = workspace.root
 
     return listOf(
         createReadFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
-        createTerminalStartTool(workspaceRoot, ::needsApproval, terminalSessionManager),
+        createTerminalStartTool(
+            workspaceRoot,
+            workspace.shellCompatibilityMode,
+            ::needsApproval,
+            terminalSessionManager,
+        ),
         createTerminalSendTool(workspaceRoot, ::needsApproval, terminalSessionManager),
         createTerminalReadTool(workspaceRoot, ::needsApproval, terminalSessionManager),
         createTerminalKillTool(workspaceRoot, ::needsApproval, terminalSessionManager),
@@ -292,6 +298,7 @@ private fun createShellTool(
 
 private fun createTerminalStartTool(
     workspaceRoot: String,
+    shellCompatibilityMode: Boolean,
     needsApproval: (String) -> Boolean,
     terminalSessionManager: WorkspaceTerminalSessionManager,
 ) = Tool(
@@ -316,6 +323,7 @@ private fun createTerminalStartTool(
         val params = it.jsonObject
         val session = terminalSessionManager.ensureAgentSession(
             root = workspaceRoot,
+            shellCompatibilityMode = shellCompatibilityMode,
             tabId = params["session_id"]?.jsonPrimitive?.longOrNull,
             createNewTab = params["create_new_tab"]?.jsonPrimitive?.booleanOrNull ?: false,
         )
@@ -599,8 +607,8 @@ private fun kotlinx.serialization.json.JsonObject.absolutePath(name: String): St
     return path
 }
 
-// 免强制审批的可写安全区: 工作区文件目录, 以及临时目录 /tmp
-private val WRITABLE_ROOT_PREFIXES = listOf("/workspace", "/tmp")
+// 免强制审批的可写安全区: 工作区文件目录、临时目录和技能目录
+private val WRITABLE_ROOT_PREFIXES = listOf("/workspace", "/tmp", "/skills")
 
 private fun kotlinx.serialization.json.JsonElement.pathOutsideWritableRoots(name: String): Boolean =
     runCatching {

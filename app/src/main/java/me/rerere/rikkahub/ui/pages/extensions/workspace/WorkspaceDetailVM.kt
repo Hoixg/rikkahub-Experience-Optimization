@@ -41,6 +41,9 @@ class WorkspaceDetailVM(
     private val _installError = MutableStateFlow<String?>(null)
     val installError = _installError.asStateFlow()
 
+    private val _settingsError = MutableStateFlow<String?>(null)
+    val settingsError = _settingsError.asStateFlow()
+
     private val _folderExportResult = MutableStateFlow<WorkspaceFolderExportResult?>(null)
     val folderExportResult = _folderExportResult.asStateFlow()
 
@@ -305,6 +308,23 @@ class WorkspaceDetailVM(
                 .onSuccess(onReady)
                 .onFailure { onReady(null) }
         }
+    }
+
+    fun setShellCompatibilityMode(enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setShellCompatibilityMode(id, enabled)
+                _state.update { it.copy(workspace = repository.getById(id)) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _settingsError.value = error.message.orEmpty()
+            }
+        }
+    }
+
+    fun dismissSettingsError() {
+        _settingsError.value = null
     }
 
     fun setToolApproval(toolName: String, needsApproval: Boolean) {

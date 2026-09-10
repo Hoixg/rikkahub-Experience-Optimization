@@ -466,7 +466,7 @@ private fun ProviderConfigureOpenAI(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
     )
@@ -485,15 +485,21 @@ private fun ProviderConfigureOpenAI(
         isError = provider.baseUrl.isNotBlank() && !provider.baseUrl.isValidBaseUrl(),
     )
 
-    if (!provider.useResponseApi) {
-        OutlinedTextField(
-            value = provider.chatCompletionsPath,
-            onValueChange = { onEdit(provider.copy(chatCompletionsPath = it.trim())) },
-            label = { Text(stringResource(R.string.setting_provider_page_api_path)) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = true,
-        )
-    }
+    OutlinedTextField(
+        value = if (provider.useResponseApi) provider.responsesPath else provider.chatCompletionsPath,
+        onValueChange = {
+            onEdit(
+                if (provider.useResponseApi) {
+                    provider.copy(responsesPath = it.trim())
+                } else {
+                    provider.copy(chatCompletionsPath = it.trim())
+                }
+            )
+        },
+        label = { Text(stringResource(R.string.setting_provider_page_api_path)) },
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !provider.builtIn,
+    )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -548,7 +554,7 @@ private fun ProviderConfigureClaude(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
         maxLines = 3,
@@ -652,7 +658,7 @@ private fun ProviderConfigureGoogle(
 
     OutlinedTextField(
         value = provider.name,
-        onValueChange = { onEdit(provider.copy(name = it.trim())) },
+        onValueChange = { onEdit(provider.copy(name = it)) },
         label = { Text(stringResource(R.string.setting_provider_page_name)) },
         modifier = Modifier.fillMaxWidth(),
     )

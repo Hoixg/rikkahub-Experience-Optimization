@@ -45,6 +45,8 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
+import me.rerere.rikkahub.ui.components.webview.WebView
+import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
@@ -68,13 +70,16 @@ fun WorkspaceFileEditorPage(
     val scope = rememberCoroutineScope()
     val editable = area == WorkspaceStorageArea.FILES
     val fileName = path.substringAfterLast('/').ifBlank { path }
-    val isMarkdown = fileName.substringAfterLast('.', "").lowercase() in setOf("md", "markdown")
+    val extension = fileName.substringAfterLast('.', "").lowercase()
+    val isMarkdown = extension in setOf("md", "markdown")
+    val supportsWebPreview = extension in setOf("html", "htm", "svg")
 
     val textState = rememberTextFieldState()
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var markdownPreview by rememberSaveable(id, area, path) { mutableStateOf(true) }
+    var webPreview by rememberSaveable(id, area, path) { mutableStateOf(supportsWebPreview) }
     val imageResolver: MarkdownImageResolver = remember(id, area, path, repository) {
         { source ->
             when (val resolved = resolveWorkspaceMarkdownImagePath(path, source)) {
@@ -113,6 +118,15 @@ fun WorkspaceFileEditorPage(
                 },
                 navigationIcon = { BackButton() },
                 actions = {
+                    if (supportsWebPreview && !loading && loadError == null) {
+                        TextButton(onClick = { webPreview = !webPreview }) {
+                            Text(
+                                stringResource(
+                                    if (webPreview) R.string.workspace_file_source else R.string.workspace_file_preview
+                                )
+                            )
+                        }
+                    }
                     if (editable && !loading && loadError == null) {
                         TextButton(
                             onClick = {
@@ -172,6 +186,14 @@ fun WorkspaceFileEditorPage(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
+            supportsWebPreview && webPreview -> WorkspaceWebPreview(
+                content = textState.text.toString(),
+                isSvg = extension == "svg",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            )
 
             else -> Column(
                 modifier = Modifier
@@ -236,4 +258,26 @@ fun WorkspaceFileEditorPage(
             }
         }
     }
+}
+
+@Composable
+private fun WorkspaceWebPreview(
+    content: String,
+    isSvg: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val state = rememberWebViewState(
+        data = content,
+        baseUrl = "https://workspace-preview.invalid/",
+        mimeType = if (isSvg) "image/svg+xml" else "text/html",
+        settings = {
+            allowFileAccess = false
+            allowContentAccess = false
+            builtInZoomControls = true
+            displayZoomControls = false
+            useWideViewPort = true
+            loadWithOverviewMode = true
+        },
+    )
+    WebView(state = state, modifier = modifier)
 }

@@ -109,6 +109,7 @@ fun WorkspaceDetailPage(
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
+    val settingsError by vm.settingsError.collectAsStateWithLifecycle()
     val folderExportResult by vm.folderExportResult.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
@@ -235,6 +236,7 @@ fun WorkspaceDetailPage(
                     installProgress = installProgress,
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,
+                    onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
                 )
 
                 1 -> WorkspaceFilesPage(
@@ -247,6 +249,11 @@ fun WorkspaceDetailPage(
                     onOpen = { entry ->
                         when {
                             entry.isDirectory -> vm.open(entry)
+
+                            entry.name.substringAfterLast('.').equals("svg", ignoreCase = true) ->
+                                navController.navigate(
+                                    Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
+                                )
 
                             else -> when (entry.detectFileType()) {
                                 WorkspaceFileType.TEXT -> navController.navigate(
@@ -333,6 +340,19 @@ fun WorkspaceDetailPage(
         )
     }
 
+    settingsError?.let { message ->
+        AlertDialog(
+            onDismissRequest = vm::dismissSettingsError,
+            title = { Text(stringResource(R.string.workspace_detail_settings_save_failed)) },
+            text = { Text(message.ifBlank { stringResource(R.string.workspace_detail_settings_save_failed) }) },
+            confirmButton = {
+                TextButton(onClick = vm::dismissSettingsError) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+        )
+    }
+
     previewImageUri?.let { uri ->
         ImagePreviewDialog(
             images = listOf(uri),
@@ -363,6 +383,7 @@ private fun WorkspaceBasicPage(
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
+    onShellCompatibilityModeChange: (Boolean) -> Unit,
 ) {
     val shellStatus = workspace?.shellStatus
     val installing = installProgress != null || shellStatus == WorkspaceShellStatus.INSTALLING.name
@@ -395,6 +416,41 @@ private fun WorkspaceBasicPage(
                     )
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CustomColors.cardColorsOnSurfaceContainer,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.workspace_detail_compatibility_mode),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            text = stringResource(R.string.workspace_detail_compatibility_mode_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = workspace?.shellCompatibilityMode ?: false,
+                        onCheckedChange = onShellCompatibilityModeChange,
+                        enabled = workspace != null,
+                    )
                 }
             }
         }
