@@ -431,7 +431,6 @@
   <string name="no_text_content_to_copy">복사할 텍스트 콘텐츠가 없습니다</string>
   <string name="notification_channel_chat_completed">채팅 완료</string>
   <string name="notification_channel_chat_live_update">채팅 생성 진행률</string>
-  <string name="notification_channel_web_server">웹 서버</string>
   <string name="notification_live_update_chip_thinking">생각 중</string>
   <string name="notification_live_update_chip_tool">도구</string>
   <string name="notification_live_update_chip_writing">작성 중</string>
@@ -439,17 +438,12 @@
   <string name="notification_live_update_title">응답 생성 중…</string>
   <string name="notification_live_update_tool">도구 실행 중: %s</string>
   <string name="notification_live_update_writing">응답 작성 중...</string>
-  <string name="notification_web_server_running">웹 서버 실행 중</string>
-  <string name="notification_web_server_starting">시작 중...</string>
-  <string name="notification_web_server_stop">중지</string>
   <string name="permission_camera">카메라</string>
   <string name="permission_camera_desc">사진을 찍기 위해 카메라 권한이 필요합니다</string>
   <string name="permission_desc_goto_setting">일부 권한이 영구적으로 거부되었습니다. 앱 설정에서 직접 활성화해 주세요:</string>
   <string name="permission_desc_require_permission">더 나은 사용자 경험을 제공하기 위해 앱에서 다음 권한이 필요합니다:</string>
   <string name="permission_diaog_title">권한 요청</string>
   <string name="permission_go_to_settings">앱 설정으로 이동</string>
-  <string name="permission_local_network">로컬 네트워크</string>
-  <string name="permission_local_network_desc">같은 로컬 네트워크의 기기에서 Web 서버에 접근할 수 있도록 허용합니다</string>
   <string name="permission_microphone">마이크</string>
   <string name="permission_microphone_desc">음성 인식을 위해 마이크 권한이 필요합니다</string>
   <string name="permission_notification">알림</string>
@@ -842,26 +836,6 @@
   <string name="setting_page_tts_service">음성 서비스</string>
   <string name="setting_page_tts_service_desc">텍스트-음성 및 음성 인식 제공업체 구성</string>
   <string name="setting_page_tts_settings">TTS 설정</string>
-  <string name="setting_page_web_server">웹 서버</string>
-  <string name="setting_page_web_server_address_note">주소 메모</string>
-  <string name="setting_page_web_server_address_note_desc">LAN 주소: 기기의 WiFi IP를 사용하며, 같은 네트워크에 연결된 다른 기기에서 접근할 수 있습니다. 모바일 데이터에서는 사용할 수 없습니다.
-로컬 주소: localhost를 사용하며, 이 기기에서만 접근할 수 있습니다.
-mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네트워크의 다른 기기에서 이름으로 접근할 수 있습니다.</string>
-  <string name="setting_page_web_server_desc">웹을 통해 RikkaHub에 접근할 수 있도록 허용</string>
-  <string name="setting_page_web_server_error">오류</string>
-  <string name="setting_page_web_server_jwt_enable">인증 활성화</string>
-  <string name="setting_page_web_server_jwt_enable_desc">웹 인터페이스에 접근할 때 비밀번호 인증이 필요합니다</string>
-  <string name="setting_page_web_server_lan_address">LAN 주소</string>
-  <string name="setting_page_web_server_local_address">로컬 주소</string>
-  <string name="setting_page_web_server_localhost_only">localhost만</string>
-  <string name="setting_page_web_server_localhost_only_desc">localhost(127.0.0.1)에서만 수신, LAN 및 mDNS 접근 비활성화</string>
-  <string name="setting_page_web_server_mdns_address">mDNS 주소</string>
-  <string name="setting_page_web_server_password">접속 비밀번호</string>
-  <string name="setting_page_web_server_password_desc">웹 인터페이스 접근에 필요한 비밀번호</string>
-  <string name="setting_page_web_server_port">포트</string>
-  <string name="setting_page_web_server_port_desc">웹 서버 수신 포트(1024-65535)</string>
-  <string name="setting_page_web_server_start">시작</string>
-  <string name="setting_page_web_server_stop">중지</string>
   <string name="setting_provider_page_abilities">기능</string>
   <string name="setting_provider_page_add">추가</string>
   <string name="setting_provider_page_add_model">모델 추가</string>

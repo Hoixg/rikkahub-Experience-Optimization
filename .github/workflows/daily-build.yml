@@ -50,24 +50,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # web 模块的 preBuild 会执行 `pnpm run build` 构建前端，必须准备好 Node + pnpm
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: web-ui/pnpm-lock.yaml
-
-      # gradle 的 buildWebUi 任务只跑 build 不跑 install，需在此提前安装依赖
-      - name: Install web-ui dependencies
-        working-directory: web-ui
-        run: pnpm install --frozen-lockfile
-
       - name: Gradle cache
         uses: actions/cache@v4
         with:
