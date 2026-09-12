@@ -78,6 +78,7 @@ import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
+import me.rerere.hugeicons.stroke.Tools
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
@@ -113,7 +114,7 @@ fun WorkspaceDetailPage(
     val folderExportResult by vm.folderExportResult.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
-    ) { 2 }
+    ) { 3 }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
@@ -220,6 +221,12 @@ fun WorkspaceDetailPage(
                     icon = { Icon(HugeIcons.File02, contentDescription = null) },
                     onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                 )
+                NavigationBarItem(
+                    selected = pagerState.currentPage == 2,
+                    label = { Text(stringResource(R.string.workspace_detail_tab_tools)) },
+                    icon = { Icon(HugeIcons.Tools, contentDescription = null) },
+                    onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
+                )
             }
         },
         containerColor = CustomColors.topBarColors.containerColor,
@@ -310,6 +317,8 @@ fun WorkspaceDetailPage(
                         }
                     },
                 )
+
+                2 -> WorkspaceToolsPage(id)
             }
         }
     }

@@ -18,6 +18,10 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.toMetadata
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.data.repository.WorkspaceTool
+import me.rerere.rikkahub.data.repository.WorkspaceToolRun
+import me.rerere.rikkahub.data.repository.WorkspaceToolRunStatus
+import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceToolRunManager
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalAgentSession
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalScreen
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
@@ -41,6 +45,9 @@ val WorkspaceToolDefaultApprovals: Map<String, Boolean> = mapOf(
     "workspace_terminal_read" to false,
     "workspace_terminal_kill" to true,
     "workspace_terminal_list" to false,
+    "workspace_register_tool" to true,
+    "workspace_list_tools" to false,
+    "workspace_run_tool" to true,
 )
 
 fun resolveWorkspaceToolApproval(name: String, overrides: Map<String, Boolean>): Boolean =
@@ -66,6 +73,9 @@ suspend fun createWorkspaceTools(
         createWriteFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createEditFileTool(workspaceId, ::needsApproval, workspaceRepository),
         createShellTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd),
+        createRegisterToolTool(workspaceId, ::needsApproval),
+        createListToolsTool(workspaceId, ::needsApproval),
+        createRunToolTool(workspaceId, ::needsApproval),
         createTerminalStartTool(
             workspaceRoot,
             workspace.shellCompatibilityMode,
@@ -78,6 +88,85 @@ suspend fun createWorkspaceTools(
         createTerminalListTool(workspaceRoot, ::needsApproval, terminalSessionManager),
     )
 }
+
+private fun createRegisterToolTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+) = Tool(
+    name = "workspace_register_tool",
+    description = "Register a workspace tool from a complete tool.json definition. Use this only after the tool files and entry script have already been created.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("manifest", buildJsonObject {
+                    put("type", "object")
+                    put("description", "Complete tool.json object for the tool to register")
+                })
+            },
+            required = listOf("manifest"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_register_tool") },
+    execute = {
+        val manager = getKoin().get<WorkspaceToolRunManager>()
+        val manifest = it.jsonObject["manifest"] ?: error("manifest is required")
+        val registered = manager.register(workspaceId, manifest.toString())
+        listOf(UIMessagePart.Text(registered.toToolJson().toString()))
+    },
+)
+
+private fun createListToolsTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+) = Tool(
+    name = "workspace_list_tools",
+    description = "List tools explicitly registered in the current workspace. Ordinary scripts and HTML files are not included.",
+    parameters = { InputSchema.Obj(properties = buildJsonObject {}) },
+    needsApproval = { needsApproval("workspace_list_tools") },
+    execute = {
+        val manager = getKoin().get<WorkspaceToolRunManager>()
+        val tools = manager.listTools(workspaceId)
+        listOf(UIMessagePart.Text(buildJsonObject {
+            put("tools", buildJsonArray { tools.forEach { add(it.toToolJson()) } })
+        }.toString()))
+    },
+)
+
+private fun createRunToolTool(
+    workspaceId: String,
+    needsApproval: (String) -> Boolean,
+) = Tool(
+    name = "workspace_run_tool",
+    description = "Run one explicitly registered workspace tool. The tool may keep running after this call; use the returned run id to refer to it in the workspace tool page.",
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("tool_id", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Registered tool id")
+                })
+                put("inputs", buildJsonObject {
+                    put("type", "object")
+                    put("description", "Input values declared by the tool manifest")
+                })
+            },
+            required = listOf("tool_id"),
+        )
+    },
+    needsApproval = { needsApproval("workspace_run_tool") },
+    execute = {
+        val params = it.jsonObject
+        val toolId = params["tool_id"]?.jsonPrimitive?.contentOrNull
+            ?.trim()?.takeIf { value -> value.isNotEmpty() }
+            ?: error("tool_id is required")
+        val input = params["inputs"]?.jsonObject.orEmpty().mapValues { (_, value) ->
+            value.jsonPrimitive.contentOrNull ?: value.toString()
+        }
+        val manager = getKoin().get<WorkspaceToolRunManager>()
+        val run = manager.start(workspaceId, toolId, input)
+        listOf(UIMessagePart.Text(run.toToolJson().toString()))
+    },
+)
 
 private val IMAGE_EXTENSIONS = setOf(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "heic", "heif", "avif", "ico",
@@ -470,6 +559,26 @@ private fun WorkspaceTerminalScreen.toJson() = buildJsonObject {
     put("rows", rows)
     put("cursor_row", cursorRow)
     put("cursor_column", cursorColumn)
+}
+
+private fun WorkspaceTool.toToolJson() = buildJsonObject {
+    put("id", manifest.id)
+    put("name", manifest.name)
+    put("description", manifest.description)
+    put("version", manifest.version)
+    put("entry_mode", manifest.entry.mode)
+    put("input_count", manifest.inputs.size)
+}
+
+private fun WorkspaceToolRun.toToolJson() = buildJsonObject {
+    put("run_id", id)
+    put("tool_id", tool.id)
+    put("status", status.name.lowercase())
+    put("log", log)
+    sessionId?.let { put("session_id", it) }
+    webUrl?.let { put("web_url", it) }
+    error?.let { put("error", it) }
+    put("result_file_count", resultFiles.size)
 }
 
 private fun kotlinx.serialization.json.JsonObject.string(name: String): String? =

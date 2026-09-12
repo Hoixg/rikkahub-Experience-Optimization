@@ -87,9 +87,9 @@ internal object ContentUriResolver {
 
     fun resolve(context: Context, raw: String): DocumentFile? {
         val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
-        // All external-file operations in this tool family must be backed by a persisted
-        // grant. Without this gate, fromSingleUri() can expose an arbitrary provider URI
-        // even though the user never granted its containing folder.
+        // Tree operations require a persisted directory grant. Single-document URIs are
+        // deliberately allowed as direct provider URIs: Android's per-URI grant remains
+        // the gate, and the exists() lookup below fails for URIs the app cannot read.
         if (treeUriParts(raw) != null && !hasTreeGrant(context, uri)) return null
 
         // A tree child URI contains both /tree/<root> and /document/<child>. Keep it
