@@ -65,9 +65,6 @@ class WorkspaceManager(
         charset: Charset = StandardCharsets.UTF_8,
     ): WorkspaceFileEntry = fileSystem.writeText(filesDir(root), path, text, overwrite, charset)
 
-    fun createDirectory(root: String, path: String): WorkspaceFileEntry =
-        fileSystem.createDirectory(filesDir(root), path)
-
     fun importFile(
         root: String,
         destinationPath: String,

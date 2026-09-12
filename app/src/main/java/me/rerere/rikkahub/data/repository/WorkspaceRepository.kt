@@ -185,15 +185,6 @@ class WorkspaceRepository(
         manager.writeText(workspace.root, path, text, overwrite)
     }
 
-    suspend fun createDirectory(
-        id: String,
-        path: String,
-    ): WorkspaceFileEntry = withContext(Dispatchers.IO) {
-        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
-        manager.ensureWorkspace(workspace.root)
-        manager.createDirectory(workspace.root, path)
-    }
-
     /**
      * 读取文本用于应用内预览/编辑, 支持两个存储区.
      * FILES 区走 [WorkspaceManager.readText] (自带大小保护); LINUX 区通过 exportFile 读入内存,

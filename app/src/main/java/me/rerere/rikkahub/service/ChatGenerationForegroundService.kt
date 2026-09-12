@@ -16,7 +16,6 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
-import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceToolRunManager
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
 
@@ -32,11 +31,8 @@ class ChatGenerationForegroundService : Service() {
     companion object {
         private const val ACTION_ACQUIRE = "me.rerere.rikkahub.action.CHAT_GENERATION_ACQUIRE"
         private const val ACTION_RELEASE = "me.rerere.rikkahub.action.CHAT_GENERATION_RELEASE"
-        private const val ACTION_ACQUIRE_TOOL = "me.rerere.rikkahub.action.WORKSPACE_TOOL_ACQUIRE"
-        private const val ACTION_RELEASE_TOOL = "me.rerere.rikkahub.action.WORKSPACE_TOOL_RELEASE"
         private const val EXTRA_GENERATION_ID = "generation_id"
         private const val EXTRA_CONVERSATION_ID = "conversation_id"
-        private const val EXTRA_TOOL_RUN_ID = "tool_run_id"
 
         const val NOTIFICATION_ID = 2002
 
@@ -65,39 +61,12 @@ class ChatGenerationForegroundService : Service() {
                 Log.e(TAG, "Unable to release chat generation foreground service", it)
             }
         }
-
-        fun acquireTool(context: Context, runId: String): Boolean {
-            val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
-                action = ACTION_ACQUIRE_TOOL
-                putExtra(EXTRA_TOOL_RUN_ID, runId)
-            }
-            return runCatching {
-                ContextCompat.startForegroundService(context, intent)
-                true
-            }.onFailure {
-                Log.e(TAG, "Unable to start workspace tool foreground service", it)
-            }.getOrDefault(false)
-        }
-
-        fun releaseTool(context: Context, runId: String) {
-            val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
-                action = ACTION_RELEASE_TOOL
-                putExtra(EXTRA_TOOL_RUN_ID, runId)
-            }
-            runCatching {
-                context.startService(intent)
-            }.onFailure {
-                Log.e(TAG, "Unable to release workspace tool foreground service", it)
-            }
-        }
     }
 
     private val activeGenerations = linkedMapOf<String, String>()
-    private val activeTools = linkedSetOf<String>()
     private var isForeground = false
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
-    private val workspaceToolRunManager: WorkspaceToolRunManager by inject()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -105,8 +74,6 @@ class ChatGenerationForegroundService : Service() {
         when (intent?.action) {
             ACTION_ACQUIRE -> acquire(intent)
             ACTION_RELEASE -> release(intent)
-            ACTION_ACQUIRE_TOOL -> acquireTool(intent)
-            ACTION_RELEASE_TOOL -> releaseTool(intent)
             else -> stopService()
         }
         return START_NOT_STICKY
@@ -114,7 +81,6 @@ class ChatGenerationForegroundService : Service() {
 
     override fun onDestroy() {
         activeGenerations.clear()
-        activeTools.clear()
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
@@ -132,11 +98,6 @@ class ChatGenerationForegroundService : Service() {
                     chatService.stopGeneration(conversationId)
                 }
             }
-        activeTools.toList().forEach { runId ->
-            appScope.launch {
-                workspaceToolRunManager.stop(runId)
-            }
-        }
         // Android only allows a few seconds after onTimeout before raising RemoteServiceException.
         stopService()
     }
@@ -150,29 +111,14 @@ class ChatGenerationForegroundService : Service() {
 
     private fun release(intent: Intent) {
         intent.getStringExtra(EXTRA_GENERATION_ID)?.let(activeGenerations::remove)
-        if (activeGenerations.isEmpty() && activeTools.isEmpty()) {
+        if (activeGenerations.isEmpty()) {
             stopService()
         } else {
-            updateForegroundNotification(activeGenerations.values.lastOrNull())
+            updateForegroundNotification(activeGenerations.values.last())
         }
     }
 
-    private fun acquireTool(intent: Intent) {
-        val runId = intent.getStringExtra(EXTRA_TOOL_RUN_ID) ?: return stopService()
-        activeTools += runId
-        updateForegroundNotification(activeGenerations.values.lastOrNull())
-    }
-
-    private fun releaseTool(intent: Intent) {
-        intent.getStringExtra(EXTRA_TOOL_RUN_ID)?.let(activeTools::remove)
-        if (activeGenerations.isEmpty() && activeTools.isEmpty()) {
-            stopService()
-        } else {
-            updateForegroundNotification(activeGenerations.values.lastOrNull())
-        }
-    }
-
-    private fun updateForegroundNotification(conversationId: String?) {
+    private fun updateForegroundNotification(conversationId: String) {
         try {
             val notification = buildNotification(conversationId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -201,29 +147,21 @@ class ChatGenerationForegroundService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(conversationId: String?) =
+    private fun buildNotification(conversationId: String) =
         NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(
-                getString(
-                    if (conversationId == null) {
-                        R.string.notification_workspace_tool_running
-                    } else {
-                        R.string.notification_live_update_title
-                    }
-                )
-            )
-            .setContentIntent(getPendingIntent(conversationId))
+            .setContentText(getString(R.string.notification_live_update_title))
+            .setContentIntent(getConversationPendingIntent(conversationId))
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
 
-    private fun getPendingIntent(conversationId: String?): PendingIntent {
+    private fun getConversationPendingIntent(conversationId: String): PendingIntent {
         val intent = Intent(this, RouteActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            conversationId?.let { putExtra("conversationId", it) }
+            putExtra("conversationId", conversationId)
         }
         return PendingIntent.getActivity(
             this,
