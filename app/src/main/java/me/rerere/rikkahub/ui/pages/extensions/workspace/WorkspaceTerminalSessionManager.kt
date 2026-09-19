@@ -101,6 +101,25 @@ class WorkspaceTerminalSessionManager internal constructor(
         awaitAgentScreen(tab, waitFor, timeoutMillis)
     }
 
+    internal suspend fun runCommand(
+        root: String,
+        shellCompatibilityMode: Boolean,
+        command: String,
+    ) {
+        val session = ensureAgentSession(
+            root = root,
+            shellCompatibilityMode = shellCompatibilityMode,
+        )
+        sendAgentInput(
+            root = root,
+            tabId = session.id,
+            input = command,
+            keys = emptyList(),
+            pressEnter = true,
+            timeoutMillis = 0L,
+        )
+    }
+
     internal suspend fun readAgentScreen(
         root: String,
         tabId: Long,

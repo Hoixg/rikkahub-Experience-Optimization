@@ -47,10 +47,6 @@ class WorkspaceDetailVM(
     private val _folderExportResult = MutableStateFlow<WorkspaceFolderExportResult?>(null)
     val folderExportResult = _folderExportResult.asStateFlow()
 
-    private val _scriptRunState = MutableStateFlow<WorkspaceScriptRunState?>(null)
-    val scriptRunState = _scriptRunState.asStateFlow()
-    private var scriptJob: kotlinx.coroutines.Job? = null
-
     init {
         loadWorkspace()
         refresh()
@@ -283,75 +279,20 @@ class WorkspaceDetailVM(
         _folderExportResult.value = null
     }
 
-    fun runScript(
-        entry: WorkspaceFileEntry,
-        interpreter: String,
-        arguments: String,
-        workingDirectory: String,
-        timeoutSeconds: String,
-    ) {
-        val commandInterpreter = interpreter.trim()
-        if (commandInterpreter.isBlank() || entry.isDirectory) return
-        scriptJob?.cancel()
-        val timeout = timeoutSeconds.trim().toLongOrNull()?.coerceIn(1L, 3_600L) ?: 30L
-        val normalizedWorkingDirectory = workingDirectory.trim().trim('/')
-        if (".." in normalizedWorkingDirectory.split('/')) {
-            _scriptRunState.value = WorkspaceScriptRunState(
-                entry = entry,
-                interpreter = commandInterpreter,
-                arguments = arguments,
-                workingDirectory = normalizedWorkingDirectory,
-                timeoutSeconds = timeout.toString(),
-                error = "工作目录必须位于工作区内",
-            )
-            return
-        }
-        val scriptPath = relativeWorkspacePath(normalizedWorkingDirectory, entry.path)
-        val command = buildString {
-            append(commandInterpreter)
-            append(' ')
-            append(shellQuote(scriptPath))
-            if (arguments.isNotBlank()) {
-                append(' ')
-                append(arguments.trim())
-            }
-        }
-        _scriptRunState.value = WorkspaceScriptRunState(
-            entry = entry,
-            interpreter = commandInterpreter,
-            arguments = arguments,
-            workingDirectory = normalizedWorkingDirectory,
-            timeoutSeconds = timeout.toString(),
-            running = true,
-        )
-        scriptJob = viewModelScope.launch {
+    fun runScriptInTerminal(entry: WorkspaceFileEntry) {
+        if (entry.isDirectory || state.value.area != WorkspaceStorageArea.FILES) return
+        val workspace = state.value.workspace ?: return
+        viewModelScope.launch {
             runCatching {
-                repository.executeCommand(
-                    id = id,
-                    command = command,
-                    cwd = normalizedWorkingDirectory,
-                    timeoutMillis = timeout * 1_000L,
+                terminalSessionManager.runCommand(
+                    root = workspace.root,
+                    shellCompatibilityMode = workspace.shellCompatibilityMode,
+                    command = scriptCommand(entry),
                 )
-            }.onSuccess { result ->
-                _scriptRunState.update { it?.copy(running = false, result = result) }
             }.onFailure { error ->
-                if (error is CancellationException) throw error
-                _scriptRunState.update {
-                    it?.copy(running = false, error = error.message ?: "脚本运行失败")
-                }
+                Log.e(TAG, "Failed to run workspace script in terminal", error)
             }
         }
-    }
-
-    fun cancelScript() {
-        scriptJob?.cancel()
-        _scriptRunState.update { it?.copy(running = false) }
-    }
-
-    fun dismissScriptRun() {
-        scriptJob?.cancel()
-        scriptJob = null
-        _scriptRunState.value = null
     }
 
     /**
@@ -537,29 +478,23 @@ data class WorkspaceFolderExportResult(
     val failures: Int,
 )
 
-data class WorkspaceScriptRunState(
-    val entry: WorkspaceFileEntry,
-    val interpreter: String,
-    val arguments: String,
-    val workingDirectory: String,
-    val timeoutSeconds: String,
-    val running: Boolean = false,
-    val result: WorkspaceCommandResult? = null,
-    val error: String? = null,
-)
-
 private fun shellQuote(value: String): String =
     "'" + value.replace("'", "'\"'\"'") + "'"
 
-private fun relativeWorkspacePath(fromDirectory: String, target: String): String {
-    val from = fromDirectory.split('/').filter { it.isNotBlank() }
-    val to = target.split('/').filter { it.isNotBlank() }
-    var common = 0
-    while (common < from.size && common < to.size && from[common] == to[common]) common++
-    return buildList {
-        repeat(from.size - common) { add("..") }
-        addAll(to.drop(common))
-    }.joinToString("/").ifBlank { "." }
+private fun scriptCommand(entry: WorkspaceFileEntry): String {
+    val path = shellQuote("/workspace/\${entry.path.trim('/')}")
+    return when (entry.name.substringAfterLast('.', "").lowercase()) {
+        "py" -> "python3 $path"
+        "js", "mjs", "cjs" -> "node $path"
+        "rb" -> "ruby $path"
+        "pl" -> "perl $path"
+        "php" -> "php $path"
+        "kt", "kts" -> "kotlinc -script $path"
+        "bash" -> "bash $path"
+        "zsh" -> "zsh $path"
+        "sh" -> "sh $path"
+        else -> "make -f $path"
+    }
 }
 
 data class WorkspaceTreeRow(

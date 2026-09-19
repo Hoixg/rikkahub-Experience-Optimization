@@ -1164,6 +1164,8 @@
   <string name="workspace_file_preview">预览</string>
   <string name="workspace_file_source">源码</string>
   <string name="workspace_file_read_failed">读取文件失败</string>
+  <string name="workspace_pdf_jump_to_page">跳转到页面</string>
+  <string name="workspace_pdf_page_number">页码</string>
   <string name="workspace_file_saved">已保存</string>
   <string name="workspace_file_save_failed">保存失败</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs 安装失败</string>
@@ -1189,6 +1191,7 @@
   <string name="workspace_detail_tool_move_file">移动文件</string>
   <string name="workspace_detail_tool_shell">执行命令</string>
   <string name="workspace_detail_tool_terminal_start">打开终端会话</string>
+  <string name="workspace_script_run">在终端运行</string>
   <string name="workspace_detail_tool_terminal_send">发送终端输入</string>
   <string name="workspace_detail_tool_terminal_read">读取终端画面</string>
   <string name="workspace_detail_tool_terminal_kill">关闭终端会话</string>
@@ -1232,17 +1235,6 @@
   <string name="common_rename">重命名</string>
   <string name="common_export">导出</string>
   <string name="common_share">分享</string>
-  <string name="workspace_script_run">运行</string>
-  <string name="workspace_script_run_title">运行工作区脚本</string>
-  <string name="workspace_script_interpreter">解释器</string>
-  <string name="workspace_script_arguments">参数</string>
-  <string name="workspace_script_working_directory">工作目录</string>
-  <string name="workspace_script_timeout_seconds">超时（秒）</string>
-  <string name="workspace_script_cancel">取消运行</string>
-  <string name="workspace_script_timed_out">运行超时</string>
-  <string name="workspace_script_exit_code">退出码：%1$d</string>
-  <string name="workspace_script_stdout">标准输出</string>
-  <string name="workspace_script_stderr">错误输出</string>
   <string name="tool_ui_edit_file">编辑：%s</string>
   <string name="tool_ui_edit_file_default">编辑文件</string>
   <string name="tool_ui_read_file">读取: %s</string>

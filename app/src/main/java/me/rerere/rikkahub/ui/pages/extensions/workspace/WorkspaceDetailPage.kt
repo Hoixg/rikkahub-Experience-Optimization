@@ -117,7 +117,6 @@ fun WorkspaceDetailPage(
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
     val folderExportResult by vm.folderExportResult.collectAsStateWithLifecycle()
-    val scriptRunState by vm.scriptRunState.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
     ) { 2 }
@@ -125,7 +124,6 @@ fun WorkspaceDetailPage(
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
-    var scriptTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(initialPath, highlightPath) {
@@ -326,7 +324,10 @@ fun WorkspaceDetailPage(
                             context.startActivity(Intent.createChooser(intent, null))
                         }
                     },
-                    onRunScript = { scriptTarget = it },
+                    onRunScript = { entry ->
+                        navController.navigate(Screen.WorkspaceTerminal(id))
+                        vm.runScriptInTerminal(entry)
+                    },
                 )
             }
         }
@@ -375,19 +376,6 @@ fun WorkspaceDetailPage(
         ImagePreviewDialog(
             images = listOf(uri),
             onDismissRequest = { previewImageUri = null },
-        )
-    }
-
-    scriptTarget?.let { entry ->
-        WorkspaceScriptDialog(
-            entry = entry,
-            state = scriptRunState,
-            onDismiss = {
-                scriptTarget = null
-                vm.dismissScriptRun()
-            },
-            onRun = vm::runScript,
-            onCancel = vm::cancelScript,
         )
     }
 
@@ -989,115 +977,6 @@ private fun isRunnableScript(name: String): Boolean =
         "sh", "bash", "zsh", "py", "js", "mjs", "cjs", "kts", "kt", "rb", "pl", "php",
     ) || name.equals("makefile", ignoreCase = true)
 
-@Composable
-private fun WorkspaceScriptDialog(
-    entry: WorkspaceFileEntry,
-    state: WorkspaceScriptRunState?,
-    onDismiss: () -> Unit,
-    onRun: (WorkspaceFileEntry, String, String, String, String) -> Unit,
-    onCancel: () -> Unit,
-) {
-    var interpreter by remember(entry.path) { mutableStateOf(defaultInterpreter(entry.name)) }
-    var arguments by remember(entry.path) { mutableStateOf("") }
-    var workingDirectory by remember(entry.path) {
-        mutableStateOf(entry.path.substringBeforeLast('/', ""))
-    }
-    var timeoutSeconds by remember(entry.path) { mutableStateOf("30") }
-    val result = state?.result
-    AlertDialog(
-        onDismissRequest = { if (state?.running != true) onDismiss() },
-        title = { Text(stringResource(R.string.workspace_script_run_title)) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(entry.path, style = MaterialTheme.typography.labelMedium)
-                OutlinedTextField(
-                    value = interpreter,
-                    onValueChange = { interpreter = it },
-                    label = { Text(stringResource(R.string.workspace_script_interpreter)) },
-                    singleLine = true,
-                    enabled = state?.running != true,
-                )
-                OutlinedTextField(
-                    value = arguments,
-                    onValueChange = { arguments = it },
-                    label = { Text(stringResource(R.string.workspace_script_arguments)) },
-                    singleLine = true,
-                    enabled = state?.running != true,
-                )
-                OutlinedTextField(
-                    value = workingDirectory,
-                    onValueChange = { workingDirectory = it },
-                    label = { Text(stringResource(R.string.workspace_script_working_directory)) },
-                    singleLine = true,
-                    enabled = state?.running != true,
-                )
-                OutlinedTextField(
-                    value = timeoutSeconds,
-                    onValueChange = { timeoutSeconds = it.filter(Char::isDigit) },
-                    label = { Text(stringResource(R.string.workspace_script_timeout_seconds)) },
-                    singleLine = true,
-                    enabled = state?.running != true,
-                )
-                state?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (state?.running == true) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                result?.let { commandResult ->
-                    Text(
-                        text = if (commandResult.timedOut) {
-                            stringResource(R.string.workspace_script_timed_out)
-                        } else {
-                            stringResource(R.string.workspace_script_exit_code, commandResult.exitCode)
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                    )
-                    if (commandResult.stdout.isNotBlank()) {
-                        Text(stringResource(R.string.workspace_script_stdout), style = MaterialTheme.typography.labelMedium)
-                        Text(commandResult.stdout, style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (commandResult.stderr.isNotBlank()) {
-                        Text(stringResource(R.string.workspace_script_stderr), style = MaterialTheme.typography.labelMedium)
-                        Text(commandResult.stderr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (state?.running == true) {
-                TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.workspace_script_cancel))
-                }
-            } else {
-                TextButton(
-                    onClick = { onRun(entry, interpreter, arguments, workingDirectory, timeoutSeconds) },
-                    enabled = interpreter.isNotBlank() && timeoutSeconds.isNotBlank(),
-                ) {
-                    Text(stringResource(R.string.workspace_script_run))
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = state?.running != true) {
-                Text(stringResource(R.string.common_cancel))
-            }
-        },
-    )
-}
-
-private fun defaultInterpreter(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-    "py" -> "python3"
-    "js", "mjs", "cjs" -> "node"
-    "rb" -> "ruby"
-    "pl" -> "perl"
-    "php" -> "php"
-    "kt", "kts" -> "kotlinc -script"
-    else -> "sh"
-}
 
 @Composable
 private fun WorkspaceFileLeadingVisual(

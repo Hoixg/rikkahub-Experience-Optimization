@@ -1183,6 +1183,8 @@
   <string name="workspace_file_preview">Preview</string>
   <string name="workspace_file_source">Source</string>
   <string name="workspace_file_read_failed">Failed to read file</string>
+  <string name="workspace_pdf_jump_to_page">Go to page</string>
+  <string name="workspace_pdf_page_number">Page number</string>
   <string name="workspace_file_saved">Saved</string>
   <string name="workspace_file_save_failed">Save failed</string>
   <string name="workspace_detail_rootfs_install_failed">Rootfs Installation Failed</string>
@@ -1208,6 +1210,7 @@
   <string name="workspace_detail_tool_move_file">Move File</string>
   <string name="workspace_detail_tool_shell">Execute Command</string>
   <string name="workspace_detail_tool_terminal_start">Open Terminal Session</string>
+  <string name="workspace_script_run">Run in terminal</string>
   <string name="workspace_detail_tool_terminal_send">Send Terminal Input</string>
   <string name="workspace_detail_tool_terminal_read">Read Terminal Screen</string>
   <string name="workspace_detail_tool_terminal_kill">Close Terminal Session</string>
@@ -1258,17 +1261,6 @@
   <string name="common_rename">Rename</string>
   <string name="common_export">Export</string>
   <string name="common_share">Share</string>
-  <string name="workspace_script_run">Run</string>
-  <string name="workspace_script_run_title">Run workspace script</string>
-  <string name="workspace_script_interpreter">Interpreter</string>
-  <string name="workspace_script_arguments">Arguments</string>
-  <string name="workspace_script_working_directory">Working directory</string>
-  <string name="workspace_script_timeout_seconds">Timeout (seconds)</string>
-  <string name="workspace_script_cancel">Cancel run</string>
-  <string name="workspace_script_timed_out">Timed out</string>
-  <string name="workspace_script_exit_code">Exit code: %1$d</string>
-  <string name="workspace_script_stdout">stdout</string>
-  <string name="workspace_script_stderr">stderr</string>
   <string name="tool_ui_edit_file">Edit: %s</string>
   <string name="tool_ui_edit_file_default">Edit file</string>
   <string name="tool_ui_read_file">Read: %s</string>
