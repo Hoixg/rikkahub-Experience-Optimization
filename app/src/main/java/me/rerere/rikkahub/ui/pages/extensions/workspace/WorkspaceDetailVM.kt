@@ -47,6 +47,10 @@ class WorkspaceDetailVM(
     private val _folderExportResult = MutableStateFlow<WorkspaceFolderExportResult?>(null)
     val folderExportResult = _folderExportResult.asStateFlow()
 
+    private val _scriptRunState = MutableStateFlow<WorkspaceScriptRunState?>(null)
+    val scriptRunState = _scriptRunState.asStateFlow()
+    private var scriptJob: kotlinx.coroutines.Job? = null
+
     init {
         loadWorkspace()
         refresh()
@@ -57,6 +61,7 @@ class WorkspaceDetailVM(
             it.copy(
                 area = area,
                 path = "",
+                highlightPath = null,
                 entries = emptyList(),
                 error = null,
             )
@@ -67,6 +72,20 @@ class WorkspaceDetailVM(
     fun open(entry: WorkspaceFileEntry) {
         if (!entry.isDirectory) return
         _state.update { it.copy(path = entry.path, entries = emptyList(), error = null) }
+        refresh()
+    }
+
+    fun openPath(path: String, highlightPath: String? = null) {
+        val normalizedPath = path.trim().trim('/').replace('\\', '/')
+        val normalizedHighlight = highlightPath?.trim()?.trim('/')?.replace('\\', '/')
+        _state.update {
+            it.copy(
+                path = normalizedPath,
+                highlightPath = normalizedHighlight,
+                entries = emptyList(),
+                error = null,
+            )
+        }
         refresh()
     }
 
@@ -264,6 +283,77 @@ class WorkspaceDetailVM(
         _folderExportResult.value = null
     }
 
+    fun runScript(
+        entry: WorkspaceFileEntry,
+        interpreter: String,
+        arguments: String,
+        workingDirectory: String,
+        timeoutSeconds: String,
+    ) {
+        val commandInterpreter = interpreter.trim()
+        if (commandInterpreter.isBlank() || entry.isDirectory) return
+        scriptJob?.cancel()
+        val timeout = timeoutSeconds.trim().toLongOrNull()?.coerceIn(1L, 3_600L) ?: 30L
+        val normalizedWorkingDirectory = workingDirectory.trim().trim('/')
+        if (".." in normalizedWorkingDirectory.split('/')) {
+            _scriptRunState.value = WorkspaceScriptRunState(
+                entry = entry,
+                interpreter = commandInterpreter,
+                arguments = arguments,
+                workingDirectory = normalizedWorkingDirectory,
+                timeoutSeconds = timeout.toString(),
+                error = "工作目录必须位于工作区内",
+            )
+            return
+        }
+        val scriptPath = relativeWorkspacePath(normalizedWorkingDirectory, entry.path)
+        val command = buildString {
+            append(commandInterpreter)
+            append(' ')
+            append(shellQuote(scriptPath))
+            if (arguments.isNotBlank()) {
+                append(' ')
+                append(arguments.trim())
+            }
+        }
+        _scriptRunState.value = WorkspaceScriptRunState(
+            entry = entry,
+            interpreter = commandInterpreter,
+            arguments = arguments,
+            workingDirectory = normalizedWorkingDirectory,
+            timeoutSeconds = timeout.toString(),
+            running = true,
+        )
+        scriptJob = viewModelScope.launch {
+            runCatching {
+                repository.executeCommand(
+                    id = id,
+                    command = command,
+                    cwd = normalizedWorkingDirectory,
+                    timeoutMillis = timeout * 1_000L,
+                )
+            }.onSuccess { result ->
+                _scriptRunState.update { it?.copy(running = false, result = result) }
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                _scriptRunState.update {
+                    it?.copy(running = false, error = error.message ?: "脚本运行失败")
+                }
+            }
+        }
+    }
+
+    fun cancelScript() {
+        scriptJob?.cancel()
+        _scriptRunState.update { it?.copy(running = false) }
+    }
+
+    fun dismissScriptRun() {
+        scriptJob?.cancel()
+        scriptJob = null
+        _scriptRunState.value = null
+    }
+
     /**
      * 把当前区域下的文件导出到 cacheDir 的临时文件, 完成后回调 [onReady].
      * 供分享 / 图片预览 / 交给系统应用打开等复用 (它们都需要一个 FileProvider 可访问的真实 File).
@@ -422,6 +512,7 @@ data class WorkspaceDetailState(
     val workspace: WorkspaceEntity? = null,
     val area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
     val path: String = "",
+    val highlightPath: String? = null,
     val entries: List<WorkspaceFileEntry> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
@@ -445,6 +536,31 @@ data class WorkspaceFolderExportResult(
     val folderName: String,
     val failures: Int,
 )
+
+data class WorkspaceScriptRunState(
+    val entry: WorkspaceFileEntry,
+    val interpreter: String,
+    val arguments: String,
+    val workingDirectory: String,
+    val timeoutSeconds: String,
+    val running: Boolean = false,
+    val result: WorkspaceCommandResult? = null,
+    val error: String? = null,
+)
+
+private fun shellQuote(value: String): String =
+    "'" + value.replace("'", "'\"'\"'") + "'"
+
+private fun relativeWorkspacePath(fromDirectory: String, target: String): String {
+    val from = fromDirectory.split('/').filter { it.isNotBlank() }
+    val to = target.split('/').filter { it.isNotBlank() }
+    var common = 0
+    while (common < from.size && common < to.size && from[common] == to[common]) common++
+    return buildList {
+        repeat(from.size - common) { add("..") }
+        addAll(to.drop(common))
+    }.joinToString("/").ifBlank { "." }
+}
 
 data class WorkspaceTreeRow(
     val entry: WorkspaceFileEntry,

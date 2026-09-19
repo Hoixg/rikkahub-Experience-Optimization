@@ -23,9 +23,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -75,6 +78,7 @@ import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Play
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
@@ -103,6 +107,8 @@ import java.io.File
 fun WorkspaceDetailPage(
     id: String,
     openFiles: Boolean = false,
+    initialPath: String? = null,
+    highlightPath: String? = null,
 ) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
@@ -111,6 +117,7 @@ fun WorkspaceDetailPage(
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
     val folderExportResult by vm.folderExportResult.collectAsStateWithLifecycle()
+    val scriptRunState by vm.scriptRunState.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
     ) { 2 }
@@ -118,7 +125,12 @@ fun WorkspaceDetailPage(
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
+    var scriptTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     val context = LocalContext.current
+
+    LaunchedEffect(initialPath, highlightPath) {
+        vm.openPath(initialPath.orEmpty(), highlightPath)
+    }
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -260,6 +272,10 @@ fun WorkspaceDetailPage(
                                     Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
                                 )
 
+                                WorkspaceFileType.DOCUMENT -> navController.navigate(
+                                    Screen.WorkspaceFileEditor(id, state.area.name, entry.path)
+                                )
+
                                 WorkspaceFileType.IMAGE -> vm.resolvePreviewFile(entry) { file ->
                                     previewImageUri = file.absolutePath
                                 }
@@ -284,6 +300,7 @@ fun WorkspaceDetailPage(
                             }
                         }
                     },
+                    highlightPath = state.highlightPath,
                     onDelete = { deleteTarget = it },
                     onExport = { entry ->
                         if (entry.isDirectory) {
@@ -309,6 +326,7 @@ fun WorkspaceDetailPage(
                             context.startActivity(Intent.createChooser(intent, null))
                         }
                     },
+                    onRunScript = { scriptTarget = it },
                 )
             }
         }
@@ -357,6 +375,19 @@ fun WorkspaceDetailPage(
         ImagePreviewDialog(
             images = listOf(uri),
             onDismissRequest = { previewImageUri = null },
+        )
+    }
+
+    scriptTarget?.let { entry ->
+        WorkspaceScriptDialog(
+            entry = entry,
+            state = scriptRunState,
+            onDismiss = {
+                scriptTarget = null
+                vm.dismissScriptRun()
+            },
+            onRun = vm::runScript,
+            onCancel = vm::cancelScript,
         )
     }
 
@@ -697,10 +728,12 @@ private fun WorkspaceFilesPage(
     onGoUp: () -> Unit,
     onToggleExpand: (WorkspaceFileEntry) -> Unit,
     onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
+    highlightPath: String?,
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
+    onRunScript: (WorkspaceFileEntry) -> Unit,
 ) {
     val rows = remember(state.entries, state.expandedPaths, state.childrenCache) {
         flattenWorkspaceTree(state.entries, state.expandedPaths, state.childrenCache)
@@ -748,6 +781,8 @@ private fun WorkspaceFilesPage(
                 onDelete = { onDelete(row.entry) },
                 onExport = { onExport(row.entry) },
                 onShare = { onShare(row.entry) },
+                onRunScript = { onRunScript(row.entry) },
+                highlighted = row.entry.path == highlightPath,
                 workspaceId = state.workspace?.id.orEmpty(),
                 area = state.area,
                 onResolvePreview = onResolvePreview,
@@ -816,6 +851,8 @@ private fun WorkspaceFileCard(
     onDelete: () -> Unit,
     onExport: () -> Unit,
     onShare: () -> Unit,
+    onRunScript: () -> Unit,
+    highlighted: Boolean,
     workspaceId: String,
     area: WorkspaceStorageArea,
     onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
@@ -826,7 +863,13 @@ private fun WorkspaceFileCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        colors = CustomColors.cardColorsOnSurfaceContainer,
+        colors = if (highlighted) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            )
+        } else {
+            CustomColors.cardColorsOnSurfaceContainer
+        },
     ) {
         Row(
             modifier = Modifier
@@ -897,6 +940,16 @@ private fun WorkspaceFileCard(
                             },
                         )
                     if (!entry.isDirectory) {
+                        if (area == WorkspaceStorageArea.FILES && isRunnableScript(entry.name)) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.workspace_script_run)) },
+                                leadingIcon = { Icon(HugeIcons.Play, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRunScript()
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.common_share)) },
                             leadingIcon = {
@@ -929,6 +982,121 @@ private fun WorkspaceFileCard(
             }
         }
     }
+}
+
+private fun isRunnableScript(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase() in setOf(
+        "sh", "bash", "zsh", "py", "js", "mjs", "cjs", "kts", "kt", "rb", "pl", "php",
+    ) || name.equals("makefile", ignoreCase = true)
+
+@Composable
+private fun WorkspaceScriptDialog(
+    entry: WorkspaceFileEntry,
+    state: WorkspaceScriptRunState?,
+    onDismiss: () -> Unit,
+    onRun: (WorkspaceFileEntry, String, String, String, String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var interpreter by remember(entry.path) { mutableStateOf(defaultInterpreter(entry.name)) }
+    var arguments by remember(entry.path) { mutableStateOf("") }
+    var workingDirectory by remember(entry.path) {
+        mutableStateOf(entry.path.substringBeforeLast('/', ""))
+    }
+    var timeoutSeconds by remember(entry.path) { mutableStateOf("30") }
+    val result = state?.result
+    AlertDialog(
+        onDismissRequest = { if (state?.running != true) onDismiss() },
+        title = { Text(stringResource(R.string.workspace_script_run_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(entry.path, style = MaterialTheme.typography.labelMedium)
+                OutlinedTextField(
+                    value = interpreter,
+                    onValueChange = { interpreter = it },
+                    label = { Text(stringResource(R.string.workspace_script_interpreter)) },
+                    singleLine = true,
+                    enabled = state?.running != true,
+                )
+                OutlinedTextField(
+                    value = arguments,
+                    onValueChange = { arguments = it },
+                    label = { Text(stringResource(R.string.workspace_script_arguments)) },
+                    singleLine = true,
+                    enabled = state?.running != true,
+                )
+                OutlinedTextField(
+                    value = workingDirectory,
+                    onValueChange = { workingDirectory = it },
+                    label = { Text(stringResource(R.string.workspace_script_working_directory)) },
+                    singleLine = true,
+                    enabled = state?.running != true,
+                )
+                OutlinedTextField(
+                    value = timeoutSeconds,
+                    onValueChange = { timeoutSeconds = it.filter(Char::isDigit) },
+                    label = { Text(stringResource(R.string.workspace_script_timeout_seconds)) },
+                    singleLine = true,
+                    enabled = state?.running != true,
+                )
+                state?.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                if (state?.running == true) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                result?.let { commandResult ->
+                    Text(
+                        text = if (commandResult.timedOut) {
+                            stringResource(R.string.workspace_script_timed_out)
+                        } else {
+                            stringResource(R.string.workspace_script_exit_code, commandResult.exitCode)
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (commandResult.stdout.isNotBlank()) {
+                        Text(stringResource(R.string.workspace_script_stdout), style = MaterialTheme.typography.labelMedium)
+                        Text(commandResult.stdout, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (commandResult.stderr.isNotBlank()) {
+                        Text(stringResource(R.string.workspace_script_stderr), style = MaterialTheme.typography.labelMedium)
+                        Text(commandResult.stderr, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (state?.running == true) {
+                TextButton(onClick = onCancel) {
+                    Text(stringResource(R.string.workspace_script_cancel))
+                }
+            } else {
+                TextButton(
+                    onClick = { onRun(entry, interpreter, arguments, workingDirectory, timeoutSeconds) },
+                    enabled = interpreter.isNotBlank() && timeoutSeconds.isNotBlank(),
+                ) {
+                    Text(stringResource(R.string.workspace_script_run))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = state?.running != true) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+private fun defaultInterpreter(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    "py" -> "python3"
+    "js", "mjs", "cjs" -> "node"
+    "rb" -> "ruby"
+    "pl" -> "perl"
+    "php" -> "php"
+    "kt", "kts" -> "kotlinc -script"
+    else -> "sh"
 }
 
 @Composable

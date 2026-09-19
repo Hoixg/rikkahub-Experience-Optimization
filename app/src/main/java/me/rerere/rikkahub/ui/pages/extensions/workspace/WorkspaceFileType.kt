@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets
  * - IMAGE: 应用内可缩放图片预览
  * - OTHER: 交给系统应用 (视频/音频/文档等) 打开
  */
-enum class WorkspaceFileType { TEXT, IMAGE, OTHER }
+enum class WorkspaceFileType { TEXT, IMAGE, DOCUMENT, OTHER }
 
 private val IMAGE_EXTENSIONS = setOf(
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "heic", "heif", "avif", "ico",
@@ -71,11 +71,14 @@ private val TEXT_EXTENSIONS = setOf(
     "diff", "patch", "srt", "vtt",
 )
 
+private val DOCUMENT_EXTENSIONS = setOf("pdf", "ppt", "pptx", "doc", "docx")
+
 fun WorkspaceFileEntry.detectFileType(): WorkspaceFileType {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when {
         ext.isEmpty() -> WorkspaceFileType.OTHER
         isWorkspaceImageFileName(name) -> WorkspaceFileType.IMAGE
+        ext in DOCUMENT_EXTENSIONS -> WorkspaceFileType.DOCUMENT
         ext in TEXT_EXTENSIONS -> WorkspaceFileType.TEXT
         else -> WorkspaceFileType.OTHER
     }

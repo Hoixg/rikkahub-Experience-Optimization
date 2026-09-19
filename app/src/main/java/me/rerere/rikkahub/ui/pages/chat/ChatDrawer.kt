@@ -162,21 +162,8 @@ fun ChatDrawerContent(
     // Menu popup 状态
     var showMenuPopup by remember { mutableStateOf(false) }
 
-    val updateCheckDisabledUntil = settings.displaySetting.updateCheckDisabledUntilEpochMillis
-    var updateChecksEnabled by remember(updateCheckDisabledUntil) {
-        mutableStateOf(updateCheckDisabledUntil <= System.currentTimeMillis())
-    }
-    LaunchedEffect(updateCheckDisabledUntil) {
-        while (true) {
-            val remaining = updateCheckDisabledUntil - System.currentTimeMillis()
-            if (remaining <= 0) {
-                updateChecksEnabled = true
-                break
-            }
-            updateChecksEnabled = false
-            delay(minOf(remaining, 60 * 60 * 1_000L))
-        }
-    }
+    val updateChecksEnabled = settings.displaySetting.showUpdates &&
+        settings.displaySetting.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
 
     ModalDrawerSheet(
         modifier = Modifier.width(300.dp)

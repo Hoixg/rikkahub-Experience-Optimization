@@ -949,7 +949,12 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                         color = colorScheme.primary,
                         textDecoration = TextDecoration.Underline,
                     ).merge(cssStyle ?: SpanStyle())
-                    withLink(LinkAnnotation.Url(href)) {
+                    withLink(
+                        LinkAnnotation.Clickable(
+                            tag = href,
+                            linkInteractionListener = { onClickCitation(href) },
+                        )
+                    ) {
                         withStyle(linkStyle) {
                             recurseChildren(element, style.merge(linkStyle.asTextStyle()))
                         }

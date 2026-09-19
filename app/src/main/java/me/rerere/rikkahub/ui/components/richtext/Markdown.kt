@@ -472,14 +472,12 @@ private fun MarkdownNode(
                 ?: ""
             val linkDest =
                 node.findChildOfTypeRecursive(MarkdownElementTypes.LINK_DESTINATION)?.getTextInNode(content) ?: ""
-            val context = LocalContext.current
             Text(
                 text = linkText,
                 color = MaterialTheme.colorScheme.primary,
                 textDecoration = TextDecoration.Underline,
                 modifier = modifier.clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, linkDest.toUri())
-                    context.startActivity(intent)
+                    onClickCitation(linkDest)
                 })
         }
 
@@ -1153,7 +1151,12 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
                     appendInlineContent("citation:$linkDest")
                 }
             } else {
-                withLink(LinkAnnotation.Url(linkDest)) {
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = linkDest,
+                        linkInteractionListener = { onClickCitation(linkDest) },
+                    )
+                ) {
                     withStyle(
                         SpanStyle(
                             color = colorScheme.primary, textDecoration = TextDecoration.Underline
@@ -1168,7 +1171,13 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
         node.type == MarkdownElementTypes.AUTOLINK -> {
             val links = node.children.trim(MarkdownTokenTypes.LT, 1).trim(MarkdownTokenTypes.GT, 1)
             links.fastForEach { link ->
-                withLink(LinkAnnotation.Url(link.getTextInNode(content))) {
+                val linkValue = link.getTextInNode(content)
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = linkValue,
+                        linkInteractionListener = { onClickCitation(linkValue) },
+                    )
+                ) {
                     withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
                         append(link.getTextInNode(content))
                     }

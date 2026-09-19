@@ -77,6 +77,8 @@ import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.components.ai.FilesPicker
 import me.rerere.rikkahub.ui.components.ai.SearchMode
 import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
+import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspacePathReference
+import me.rerere.rikkahub.ui.pages.extensions.workspace.parentPath
 import me.rerere.rikkahub.ui.components.ai.rememberChatAttachmentPickerActions
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -534,6 +536,21 @@ private fun ChatPageContent(
                 onConversationSystemPromptChange = { newPrompt ->
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
+                },
+                onWorkspacePathClick = { reference: WorkspacePathReference ->
+                    val workspace = boundWorkspace
+                    if (workspace == null) {
+                        toaster.show("当前助手未绑定工作区", type = ToastType.Error)
+                    } else {
+                        navController.navigate(
+                            Screen.WorkspaceDetail(
+                                id = workspace.id,
+                                openFiles = true,
+                                initialPath = reference.parentPath(),
+                                highlightPath = reference.path,
+                            )
+                        )
+                    }
                 },
             )
         }

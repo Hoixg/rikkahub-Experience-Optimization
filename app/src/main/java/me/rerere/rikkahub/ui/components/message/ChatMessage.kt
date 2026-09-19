@@ -79,7 +79,9 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.replaceRegexes
+import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
+import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import me.rerere.rikkahub.ui.components.webview.WebViewContentCache
@@ -94,6 +96,11 @@ import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.urlDecode
+import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspacePathReference
+import me.rerere.rikkahub.ui.pages.extensions.workspace.linkifyWorkspacePaths
+import me.rerere.rikkahub.ui.pages.extensions.workspace.parseWorkspacePathReference
+import me.rerere.workspace.WorkspaceStorageArea
+import org.koin.compose.koinInject
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -117,6 +124,7 @@ fun ChatMessage(
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    onWorkspacePathClick: (WorkspacePathReference) -> Unit = {},
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -168,6 +176,7 @@ fun ChatMessage(
                 model = model,
                 onToolApproval = onToolApproval,
                 onToolAnswer = onToolAnswer,
+                onWorkspacePathClick = onWorkspacePathClick,
                 onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
             )
 
@@ -273,14 +282,17 @@ private fun MessagePartsBlock(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
+    onWorkspacePathClick: (WorkspacePathReference) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val workspaceRepository: WorkspaceRepository = koinInject()
     val contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
 
     // 消息输出HapticFeedback
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
     val partsState by rememberUpdatedState(parts)
+    val workspacePathClickState by rememberUpdatedState(onWorkspacePathClick)
 
     val handleClickCitation: (String) -> Unit = remember {
         handler@{ citationId ->
@@ -298,6 +310,35 @@ private fun MessagePartsBlock(
                             return@handler
                         }
                     }
+                }
+            }
+        }
+    }
+    val handleClickLink: (String) -> Unit = remember {
+        { target ->
+            val workspacePath = parseWorkspacePathReference(target)
+            if (workspacePath != null) {
+                workspacePathClickState(workspacePath)
+            } else {
+                handleClickCitation(target)
+                if (!target.startsWith("#")) context.openUrl(target)
+            }
+        }
+    }
+    val workspaceImageResolver: MarkdownImageResolver? = remember(assistant?.workspaceId, workspaceRepository) {
+        assistant?.workspaceId?.let { workspaceId ->
+            { source: String ->
+                val reference = parseWorkspacePathReference(source)
+                if (reference == null) {
+                    null
+                } else {
+                    runCatching {
+                        workspaceRepository.resolvePreviewFile(
+                            id = workspaceId.toString(),
+                            area = WorkspaceStorageArea.FILES,
+                            path = reference.path,
+                        ).absolutePath
+                    }.getOrNull()
                 }
             }
         }
@@ -373,12 +414,13 @@ private fun MessagePartsBlock(
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         MarkdownBlock(
-                                            content = part.text.replaceRegexes(
+                                            content = linkifyWorkspacePaths(part.text).replaceRegexes(
                                                 assistant = assistant,
                                                 scope = AssistantAffectScope.USER,
                                                 visual = true,
                                             ),
-                                            onClickCitation = handleClickCitation
+                                            onClickCitation = handleClickLink,
+                                            imageResolver = workspaceImageResolver,
                                         )
                                     }
                                 }
@@ -391,23 +433,25 @@ private fun MessagePartsBlock(
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             MarkdownBlock(
-                                                content = part.text.replaceRegexes(
+                                                content = linkifyWorkspacePaths(part.text).replaceRegexes(
                                                     assistant = assistant,
                                                     scope = AssistantAffectScope.ASSISTANT,
                                                     visual = true,
                                                 ),
-                                                onClickCitation = handleClickCitation,
+                                                onClickCitation = handleClickLink,
+                                                imageResolver = workspaceImageResolver,
                                             )
                                         }
                                     }
                                 } else {
                                     MarkdownBlock(
-                                        content = part.text.replaceRegexes(
+                                        content = linkifyWorkspacePaths(part.text).replaceRegexes(
                                             assistant = assistant,
                                             scope = AssistantAffectScope.ASSISTANT,
                                             visual = true,
                                         ),
-                                        onClickCitation = handleClickCitation,
+                                        onClickCitation = handleClickLink,
+                                        imageResolver = workspaceImageResolver,
                                         modifier = Modifier
                                             .animateContentSize()
                                     )

@@ -1232,6 +1232,17 @@
   <string name="common_rename">重命名</string>
   <string name="common_export">导出</string>
   <string name="common_share">分享</string>
+  <string name="workspace_script_run">运行</string>
+  <string name="workspace_script_run_title">运行工作区脚本</string>
+  <string name="workspace_script_interpreter">解释器</string>
+  <string name="workspace_script_arguments">参数</string>
+  <string name="workspace_script_working_directory">工作目录</string>
+  <string name="workspace_script_timeout_seconds">超时（秒）</string>
+  <string name="workspace_script_cancel">取消运行</string>
+  <string name="workspace_script_timed_out">运行超时</string>
+  <string name="workspace_script_exit_code">退出码：%1$d</string>
+  <string name="workspace_script_stdout">标准输出</string>
+  <string name="workspace_script_stderr">错误输出</string>
   <string name="tool_ui_edit_file">编辑：%s</string>
   <string name="tool_ui_edit_file_default">编辑文件</string>
   <string name="tool_ui_read_file">读取: %s</string>

@@ -40,6 +40,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.rerere.document.DocxParser
+import me.rerere.document.PdfParser
+import me.rerere.document.PptxParser
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -72,6 +76,7 @@ fun WorkspaceFileEditorPage(
     val fileName = path.substringAfterLast('/').ifBlank { path }
     val extension = fileName.substringAfterLast('.', "").lowercase()
     val isMarkdown = extension in setOf("md", "markdown")
+    val isDocument = extension in setOf("pdf", "ppt", "pptx", "doc", "docx")
     val supportsWebPreview = extension in setOf("html", "htm", "svg")
 
     val textState = rememberTextFieldState()
@@ -96,7 +101,19 @@ fun WorkspaceFileEditorPage(
         loading = true
         loadError = null
         runCatching {
-            repository.readTextForPreview(id, area, path)
+            if (isDocument) {
+                val file = repository.resolvePreviewFile(id, area, path)
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    when (extension) {
+                        "pdf" -> PdfParser.parserPdf(file)
+                        "pptx" -> PptxParser.parse(file)
+                        "docx" -> DocxParser.parse(file)
+                        else -> "暂不支持此格式的应用内内容解析，请使用系统查看器打开。"
+                    }
+                }
+            } else {
+                repository.readTextForPreview(id, area, path)
+            }
         }.onSuccess { content ->
             textState.setTextAndPlaceCursorAtEnd(content)
             loading = false
@@ -127,7 +144,7 @@ fun WorkspaceFileEditorPage(
                             )
                         }
                     }
-                    if (editable && !loading && loadError == null) {
+                    if (editable && !isDocument && !loading && loadError == null) {
                         TextButton(
                             onClick = {
                                 if (saving) return@TextButton
@@ -200,7 +217,7 @@ fun WorkspaceFileEditorPage(
                     .fillMaxSize()
                     .padding(innerPadding),
             ) {
-                if (isMarkdown) {
+                if (isMarkdown && !isDocument) {
                     val modes = listOf(
                         true to stringResource(R.string.workspace_file_preview),
                         false to stringResource(R.string.workspace_file_source),
@@ -222,7 +239,7 @@ fun WorkspaceFileEditorPage(
                     }
                 }
 
-                if (isMarkdown && markdownPreview) {
+                if ((isMarkdown && markdownPreview) || isDocument) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -1258,6 +1258,17 @@
   <string name="common_rename">Rename</string>
   <string name="common_export">Export</string>
   <string name="common_share">Share</string>
+  <string name="workspace_script_run">Run</string>
+  <string name="workspace_script_run_title">Run workspace script</string>
+  <string name="workspace_script_interpreter">Interpreter</string>
+  <string name="workspace_script_arguments">Arguments</string>
+  <string name="workspace_script_working_directory">Working directory</string>
+  <string name="workspace_script_timeout_seconds">Timeout (seconds)</string>
+  <string name="workspace_script_cancel">Cancel run</string>
+  <string name="workspace_script_timed_out">Timed out</string>
+  <string name="workspace_script_exit_code">Exit code: %1$d</string>
+  <string name="workspace_script_stdout">stdout</string>
+  <string name="workspace_script_stderr">stderr</string>
   <string name="tool_ui_edit_file">Edit: %s</string>
   <string name="tool_ui_edit_file_default">Edit file</string>
   <string name="tool_ui_read_file">Read: %s</string>

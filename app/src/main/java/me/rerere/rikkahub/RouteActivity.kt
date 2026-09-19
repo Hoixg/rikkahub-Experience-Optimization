@@ -501,6 +501,8 @@ class RouteActivity : ComponentActivity() {
                                 WorkspaceDetailPage(
                                     id = key.id,
                                     openFiles = key.openFiles,
+                                    initialPath = key.initialPath,
+                                    highlightPath = key.highlightPath,
                                 )
                             }
 
@@ -703,6 +705,8 @@ sealed interface Screen : NavKey {
     data class WorkspaceDetail(
         val id: String,
         val openFiles: Boolean = false,
+        val initialPath: String? = null,
+        val highlightPath: String? = null,
     ) : Screen
 
     @Serializable
