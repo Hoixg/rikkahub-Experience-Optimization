@@ -481,8 +481,8 @@ data class WorkspaceFolderExportResult(
 private fun shellQuote(value: String): String =
     "'" + value.replace("'", "'\"'\"'") + "'"
 
-private fun scriptCommand(entry: WorkspaceFileEntry): String {
-    val path = shellQuote("/workspace/\${entry.path.trim('/')}")
+internal fun scriptCommand(entry: WorkspaceFileEntry): String {
+    val path = shellQuote("/workspace/${entry.path.trim('/')}")
     return when (entry.name.substringAfterLast('.', "").lowercase()) {
         "py" -> "python3 $path"
         "js", "mjs", "cjs" -> "node $path"

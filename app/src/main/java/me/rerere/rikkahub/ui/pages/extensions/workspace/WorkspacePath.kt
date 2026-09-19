@@ -39,7 +39,7 @@ fun parseWorkspacePathReference(source: String): WorkspacePathReference? {
 fun WorkspacePathReference.parentPath(): String = path.substringBeforeLast('/', "")
 
 private val PLAIN_WORKSPACE_PATH = Regex(
-    "(?<![\\w\"'(/])((?:file:///)?/workspace/[^\\s<>()\\]]+)",
+    "(?<![\\w\"'(/])((?:file://)?/workspace/[^\\s<>()\\]]+)",
     RegexOption.IGNORE_CASE,
 )
 
@@ -56,8 +56,10 @@ fun linkifyWorkspacePaths(text: String): String = buildString {
             append(line)
         } else {
             append(PLAIN_WORKSPACE_PATH.replace(line) { match ->
-                val path = match.groupValues[1].trimEnd('.', ',', ';', ':')
-                "[$path]($path)"
+                val rawPath = match.groupValues[1]
+                val path = rawPath.trimEnd('.', ',', ';', ':')
+                val trailing = rawPath.substring(path.length)
+                "[$path]($path)$trailing"
             })
         }
     }

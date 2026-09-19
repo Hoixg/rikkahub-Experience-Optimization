@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
@@ -453,9 +454,7 @@ private fun PdfPageList(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(horizontalScrollState),
+        modifier = modifier.fillMaxWidth(),
     ) {
         val pageWidth = maxWidth * zoom
         val targetWidth = with(LocalDensity.current) {
@@ -482,20 +481,29 @@ private fun PdfPageList(
                     }
                 }
         }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.width(pageWidth),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(12.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(horizontalScrollState),
+            contentAlignment = Alignment.TopStart,
         ) {
-            items(pageCount, key = { it }) { index ->
-                PdfLazyPage(
-                    filePath = filePath,
-                    pageIndex = index,
-                    targetWidth = targetWidth,
-                    renderCoordinator = renderCoordinator,
-                    onClick = { onPageClick(index) },
-                )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .width(pageWidth)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(12.dp),
+            ) {
+                items(pageCount, key = { it }) { index ->
+                    PdfLazyPage(
+                        filePath = filePath,
+                        pageIndex = index,
+                        targetWidth = targetWidth,
+                        renderCoordinator = renderCoordinator,
+                        onClick = { onPageClick(index) },
+                    )
+                }
             }
         }
     }

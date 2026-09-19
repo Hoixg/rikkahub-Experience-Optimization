@@ -35,4 +35,20 @@ class WorkspaceDetailVMTest {
             plan.map { it.sourcePath },
         )
     }
+
+    @Test
+    fun `script command uses the real workspace path`() {
+        assertEquals(
+            "python3 '/workspace/scripts/test_preview.py'",
+            scriptCommand(file("test_preview.py", "scripts/test_preview.py")),
+        )
+    }
+
+    @Test
+    fun `script command quotes paths with spaces`() {
+        assertEquals(
+            "python3 '/workspace/my scripts/demo.py'",
+            scriptCommand(file("demo.py", "my scripts/demo.py")),
+        )
+    }
 }

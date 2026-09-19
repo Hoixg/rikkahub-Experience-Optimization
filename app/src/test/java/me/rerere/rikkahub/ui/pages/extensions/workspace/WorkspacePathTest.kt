@@ -21,10 +21,10 @@ class WorkspacePathTest {
     @Test
     fun linkifiesPlainPathsButLeavesFencedCodeUntouched() {
         val result = linkifyWorkspacePaths(
-            "Open /workspace/images/plot.png.\nSee file:///workspace/docs/readme.md\n\n\`\`\`text\n/workspace/raw.txt\n\`\`\`",
+            "Open /workspace/images/plot.png.\nSee file:///workspace/docs/readme.md\n\n```text\n/workspace/raw.txt\n```",
         )
         assertEquals(
-            "Open [/workspace/images/plot.png](/workspace/images/plot.png).\nSee [file:///workspace/docs/readme.md](file:///workspace/docs/readme.md)\n\n\`\`\`text\n/workspace/raw.txt\n\`\`\`",
+            "Open [/workspace/images/plot.png](/workspace/images/plot.png).\nSee [file:///workspace/docs/readme.md](file:///workspace/docs/readme.md)\n\n```text\n/workspace/raw.txt\n```",
             result,
         )
     }
