@@ -92,7 +92,6 @@ class GenerationLoop(
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
-        planModeEnabled: Boolean = false,
         workspaceCwd: String? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
@@ -176,7 +175,6 @@ class GenerationLoop(
                     conversationId = conversationId,
                     conversationModeInjectionIds = conversationModeInjectionIds,
                     conversationLorebookIds = conversationLorebookIds,
-                    planModeEnabled = planModeEnabled,
                     workspaceCwd = workspaceCwd,
                 )
                 messages = messages.visualTransforms(
@@ -378,7 +376,6 @@ class GenerationLoop(
         conversationId: Uuid? = null,
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
-        planModeEnabled: Boolean = false,
         workspaceCwd: String? = null,
     ) {
         val internalMessages = buildList {
@@ -416,7 +413,6 @@ class GenerationLoop(
             settings = settings,
             conversationModeInjectionIds = conversationModeInjectionIds,
             conversationLorebookIds = conversationLorebookIds,
-            planModeEnabled = planModeEnabled,
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
         )

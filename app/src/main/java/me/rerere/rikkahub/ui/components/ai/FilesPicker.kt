@@ -172,29 +172,6 @@ internal fun FilesPicker(
             )
         }
 
-        ListItem(
-            leadingContent = {
-                Icon(
-                    imageVector = HugeIcons.Tools,
-                    contentDescription = stringResource(R.string.plan_mode_title),
-                )
-            },
-            headlineContent = {
-                Text(stringResource(R.string.plan_mode_title))
-            },
-            trailingContent = {
-                Switch(
-                    checked = conversation.planModeEnabled,
-                    onCheckedChange = { enabled ->
-                        onUpdateConversation(conversation.copy(planModeEnabled = enabled))
-                    },
-                )
-            },
-            colors = ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
-            ),
-        )
-
         if (settings.mcpServers.isNotEmpty()) {
             McpPickerListItem(
                 assistant = assistant,

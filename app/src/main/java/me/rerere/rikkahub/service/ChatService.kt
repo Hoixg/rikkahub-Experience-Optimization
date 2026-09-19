@@ -112,7 +112,6 @@ internal fun createForkConversation(
     lorebookIds = source.lorebookIds,
     workspaceCwd = source.workspaceCwd,
     folderId = source.folderId,
-    planModeEnabled = source.planModeEnabled,
 )
 
 data class ChatError(
@@ -729,7 +728,6 @@ class ChatService(
                 conversationSystemPrompt = conversation.customSystemPrompt,
                 conversationModeInjectionIds = conversation.modeInjectionIds,
                 conversationLorebookIds = conversation.lorebookIds,
-                planModeEnabled = conversation.planModeEnabled,
                 workspaceCwd = conversation.workspaceCwd,
                 memories = if (assistant.useGlobalMemory) {
                     memoryRepository.getGlobalMemories()

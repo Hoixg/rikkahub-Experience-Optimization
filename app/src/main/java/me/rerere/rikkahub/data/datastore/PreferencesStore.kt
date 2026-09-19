@@ -38,8 +38,6 @@ import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.LEARNING_MODE_PROMPT
-import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_ABBREVIATION
-import me.rerere.rikkahub.data.ai.prompts.DEFAULT_PLAN_MODE_PROMPT
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
@@ -108,8 +106,6 @@ class SettingsStore(
         val OCR_PROMPT = stringPreferencesKey("ocr_prompt")
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
-        val PLAN_MODE_PROMPT = stringPreferencesKey("plan_mode_prompt")
-        val PLAN_MODE_ABBREVIATION = stringPreferencesKey("plan_mode_abbreviation")
         val ENABLE_AUTO_COMPACTION = booleanPreferencesKey("enable_auto_compaction")
 
         // 提供商
@@ -187,8 +183,6 @@ class SettingsStore(
                 preferences[OCR_PROMPT] = settings.ocrPrompt
                 preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
                 preferences[COMPRESS_PROMPT] = settings.compressPrompt
-                preferences[PLAN_MODE_PROMPT] = settings.planModePrompt
-                preferences[PLAN_MODE_ABBREVIATION] = settings.planModeAbbreviation.trim().take(8).ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
 
                 preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -255,9 +249,6 @@ class SettingsStore(
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
                 compressModelId = preferences[COMPRESS_MODEL]?.let { Uuid.parse(it) } ?: DEFAULT_AUTO_MODEL_ID,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
-                planModePrompt = preferences[PLAN_MODE_PROMPT] ?: DEFAULT_PLAN_MODE_PROMPT,
-                planModeAbbreviation = preferences[PLAN_MODE_ABBREVIATION]?.trim()?.take(8)?.ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
-                    ?: DEFAULT_PLAN_MODE_ABBREVIATION,
                 enableAutoCompaction = preferences[ENABLE_AUTO_COMPACTION] == true,
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
@@ -449,8 +440,6 @@ class SettingsStore(
             preferences[OCR_PROMPT] = settings.ocrPrompt
             preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
-            preferences[PLAN_MODE_PROMPT] = settings.planModePrompt
-            preferences[PLAN_MODE_ABBREVIATION] = settings.planModeAbbreviation.trim().take(8).ifBlank { DEFAULT_PLAN_MODE_ABBREVIATION }
             preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
@@ -600,8 +589,6 @@ data class Settings(
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
     val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
-    val planModePrompt: String = DEFAULT_PLAN_MODE_PROMPT,
-    val planModeAbbreviation: String = DEFAULT_PLAN_MODE_ABBREVIATION,
     /** 全局自动压缩开关，默认关闭；手动压缩不受影响。 */
     val enableAutoCompaction: Boolean = false,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,

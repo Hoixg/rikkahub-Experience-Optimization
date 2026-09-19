@@ -28,8 +28,6 @@ object PromptInjectionTransformer : InputMessageTransformer {
             lorebooks = ctx.settings.lorebooks,
             conversationModeInjectionIds = ctx.conversationModeInjectionIds,
             conversationLorebookIds = ctx.conversationLorebookIds,
-            planModeEnabled = ctx.planModeEnabled,
-            planModePrompt = ctx.settings.planModePrompt,
         )
     }
 }
@@ -44,8 +42,6 @@ internal fun transformMessages(
     lorebooks: List<Lorebook>,
     conversationModeInjectionIds: Set<Uuid> = emptySet(),
     conversationLorebookIds: Set<Uuid> = emptySet(),
-    planModeEnabled: Boolean = false,
-    planModePrompt: String = "",
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -56,17 +52,6 @@ internal fun transformMessages(
         conversationModeInjectionIds = conversationModeInjectionIds,
         conversationLorebookIds = conversationLorebookIds,
     ).toMutableList()
-
-    if (planModeEnabled && planModePrompt.isNotBlank()) {
-        injections.add(
-            PromptInjection.ModeInjection(
-                name = "Plan Mode",
-                content = planModePrompt,
-                priority = Int.MIN_VALUE,
-                position = InjectionPosition.AFTER_SYSTEM_PROMPT,
-            )
-        )
-    }
 
     if (injections.isEmpty()) {
         return messages

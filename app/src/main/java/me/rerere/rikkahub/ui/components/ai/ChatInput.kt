@@ -133,8 +133,6 @@ fun ChatInput(
     modifier: Modifier = Modifier,
     completionProviders: List<ChatCompletionProvider> = emptyList(),
     workspace: WorkspaceEntity? = null,
-    planModeEnabled: Boolean = false,
-    planModeAbbreviation: String = "PLAN",
     onWorkspaceClick: () -> Unit = {},
     onUpdateChatModel: (Model) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
@@ -262,8 +260,6 @@ fun ChatInput(
                     TextInputRow(
                         state = state,
                         completionProviders = completionProviders,
-                        planModeEnabled = planModeEnabled,
-                        planModeAbbreviation = planModeAbbreviation,
                         onSendMessage = { sendMessage() },
                     )
 
@@ -488,8 +484,6 @@ private fun ActionIconButton(
 private fun TextInputRow(
     state: ChatInputState,
     completionProviders: List<ChatCompletionProvider>,
-    planModeEnabled: Boolean,
-    planModeAbbreviation: String,
     onSendMessage: () -> Unit,
 ) {
     val settings = LocalSettings.current
@@ -626,11 +620,7 @@ private fun TextInputRow(
             shape = MaterialTheme.shapes.largeIncreased,
             placeholder = {
                 Text(
-                    text = if (planModeEnabled) {
-                        planModeAbbreviation
-                    } else {
-                        stringResource(R.string.chat_input_placeholder)
-                    }
+                    text = stringResource(R.string.chat_input_placeholder)
                 )
             },
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
@@ -673,8 +663,6 @@ private fun TextInputRow(
         if (isFullScreen) {
             FullScreenEditor(
                 state = state,
-                planModeEnabled = planModeEnabled,
-                planModeAbbreviation = planModeAbbreviation,
             ) {
                 isFullScreen = false
             }
@@ -814,8 +802,6 @@ private fun QuickMessageButton(
 @Composable
 private fun FullScreenEditor(
     state: ChatInputState,
-    planModeEnabled: Boolean,
-    planModeAbbreviation: String,
     onDone: () -> Unit,
 ) {
     BasicAlertDialog(
@@ -861,13 +847,7 @@ private fun FullScreenEditor(
                             .fillMaxSize(),
                         shape = RoundedCornerShape(32.dp),
                         placeholder = {
-                            Text(
-                                if (planModeEnabled) {
-                                    planModeAbbreviation
-                                } else {
-                                    stringResource(R.string.chat_input_placeholder)
-                                }
-                            )
+                            Text(stringResource(R.string.chat_input_placeholder))
                         },
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Sentences,
