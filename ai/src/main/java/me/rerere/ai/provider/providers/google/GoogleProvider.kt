@@ -417,6 +417,7 @@ class GoogleProvider(private val client: OkHttpClient, @Suppress("UNUSED_PARAMET
                                                     "exclusiveMinimum",
                                                     "format",
                                                     "additionalProperties",
+                                                    "propertyNames",
                                                     "enum",
                                                 )
                                             )

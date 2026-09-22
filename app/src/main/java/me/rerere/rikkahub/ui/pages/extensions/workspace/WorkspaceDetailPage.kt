@@ -7,7 +7,7 @@ import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -164,6 +165,11 @@ fun WorkspaceDetailPage(
             openOutputStream = { childUri -> context.contentResolver.openOutputStream(childUri) },
         )
     }
+    val directoryExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        vm.exportFilesToDirectory(uri, context.contentResolver)
+    }
 
     BackHandler(enabled = pagerState.currentPage == 1 && state.path.isNotBlank()) {
         vm.goUp()
@@ -251,6 +257,7 @@ fun WorkspaceDetailPage(
 
                 1 -> WorkspaceFilesPage(
                     state = state,
+                    isActive = pagerState.currentPage == 1,
                     contentPadding = PaddingValues(),
                     onSelectArea = vm::selectArea,
                     onGoUp = vm::goUp,
@@ -300,6 +307,9 @@ fun WorkspaceDetailPage(
                     },
                     highlightPath = state.highlightPath,
                     onDelete = { deleteTarget = it },
+                    onBatchExport = { entries ->
+                        if (vm.prepareBatchExport(entries)) directoryExportLauncher.launch(null)
+                    },
                     onExport = { entry ->
                         if (entry.isDirectory) {
                             folderExportTarget = entry
@@ -331,6 +341,17 @@ fun WorkspaceDetailPage(
                 )
             }
         }
+    }
+
+    state.exportResult?.let { result ->
+        AlertDialog(
+            onDismissRequest = vm::dismissExportResult,
+            title = { Text("导出结果") },
+            text = { Text(result, modifier = Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = {
+                TextButton(onClick = vm::dismissExportResult) { Text(stringResource(R.string.common_confirm)) }
+            },
+        )
     }
 
     state.workspace?.let { workspace ->
@@ -711,6 +732,7 @@ private fun InstallRootfsDialog(
 @Composable
 private fun WorkspaceFilesPage(
     state: WorkspaceDetailState,
+    isActive: Boolean,
     contentPadding: PaddingValues,
     onSelectArea: (WorkspaceStorageArea) -> Unit,
     onGoUp: () -> Unit,
@@ -720,6 +742,7 @@ private fun WorkspaceFilesPage(
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
+    onBatchExport: (List<WorkspaceFileEntry>) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
     onRunScript: (WorkspaceFileEntry) -> Unit,
 ) {
@@ -727,6 +750,19 @@ private fun WorkspaceFilesPage(
         flattenWorkspaceTree(state.entries, state.expandedPaths, state.childrenCache)
     }
 
+    var selecting by remember(state.area, state.path) { mutableStateOf(false) }
+    var selectedPaths by remember(state.area, state.path) { mutableStateOf(emptySet<String>()) }
+    val files = flattenWorkspaceTree(state.entries, state.expandedPaths, state.childrenCache)
+        .map { it.entry }
+        .filterNot { it.isDirectory }
+    val selectedFiles = files.filter { it.path in selectedPaths }
+    fun toggleSelection(entry: WorkspaceFileEntry) {
+        selectedPaths = if (entry.path in selectedPaths) selectedPaths - entry.path else selectedPaths + entry.path
+    }
+    BackHandler(enabled = selecting && isActive) {
+        selecting = false
+        selectedPaths = emptySet()
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding + PaddingValues(16.dp),
@@ -747,6 +783,34 @@ private fun WorkspaceFilesPage(
             )
         }
 
+        if (selecting || state.exporting) item {
+            Column {
+                if (selecting) Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = {
+                            selecting = false
+                            selectedPaths = emptySet()
+                        },
+                    ) { Text("取消多选") }
+                    TextButton(onClick = {
+                        selectedPaths = if (selectedFiles.size == files.size) emptySet() else files.map { it.path }.toSet()
+                    }) { Text(if (files.isNotEmpty() && selectedFiles.size == files.size) "取消全选" else "全选") }
+                    TextButton(
+                        onClick = { onBatchExport(selectedFiles) },
+                        enabled = selectedFiles.isNotEmpty() && !state.exporting,
+                    ) { Text("导出 (${selectedFiles.size})") }
+                }
+                if (state.exporting) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("正在导出 ${state.exportCompleted}/${state.exportTotal}")
+                }
+            }
+        }
+
         state.error?.let { error ->
             item {
                 ErrorCard(error)
@@ -764,7 +828,6 @@ private fun WorkspaceFilesPage(
                 entry = row.entry,
                 depth = row.depth,
                 expanded = row.entry.path in state.expandedPaths,
-                onOpen = { onOpen(row.entry) },
                 onToggleExpand = { onToggleExpand(row.entry) },
                 onDelete = { onDelete(row.entry) },
                 onExport = { onExport(row.entry) },
@@ -774,6 +837,16 @@ private fun WorkspaceFilesPage(
                 workspaceId = state.workspace?.id.orEmpty(),
                 area = state.area,
                 onResolvePreview = onResolvePreview,
+                selecting = selecting,
+                selected = row.entry.path in selectedPaths,
+                onToggleSelection = { toggleSelection(row.entry) },
+                onLongClick = {
+                    selecting = true
+                    selectedPaths = selectedPaths + row.entry.path
+                },
+                onOpen = {
+                    if (selecting && !row.entry.isDirectory) toggleSelection(row.entry) else onOpen(row.entry)
+                },
             )
         }
     }
@@ -834,6 +907,10 @@ private fun WorkspaceFileCard(
     entry: WorkspaceFileEntry,
     depth: Int,
     expanded: Boolean,
+    selecting: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
+    onLongClick: () -> Unit,
     onOpen: () -> Unit,
     onToggleExpand: () -> Unit,
     onDelete: () -> Unit,
@@ -850,7 +927,11 @@ private fun WorkspaceFileCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .combinedClickable(
+                onClick = onOpen,
+                onLongClick = if (entry.isDirectory) null else onLongClick,
+                onLongClickLabel = if (entry.isDirectory) null else "选择文件",
+            ),
         colors = if (highlighted) {
             CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -865,6 +946,9 @@ private fun WorkspaceFileCard(
                 .padding(start = 16.dp + (depth * 20).dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selecting && !entry.isDirectory) {
+                Checkbox(checked = selected, onCheckedChange = { onToggleSelection() })
+            }
             if (entry.isDirectory) {
                 IconButton(
                     onClick = onToggleExpand,
@@ -906,7 +990,7 @@ private fun WorkspaceFileCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Box {
+            if (!selecting) Box {
                 IconButton(onClick = { menuExpanded = true }) {
                     Icon(HugeIcons.MoreVertical, contentDescription = null)
                 }
