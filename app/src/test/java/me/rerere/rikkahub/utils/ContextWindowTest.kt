@@ -47,6 +47,14 @@ class ContextWindowTest {
     }
 
     @Test
+    fun effectiveWindowPrefersUserConfiguredThenNullModelDefault() {
+        val modelId = "context-indicator-model"
+        assertEquals(8_192, Model(modelId = modelId, contextLength = 8_192).effectiveContextLength())
+        assertEquals(262_144, Model(modelId = modelId).effectiveContextLength())
+        assertEquals(262_144, null.effectiveContextLength())
+    }
+
+    @Test
     fun requestWindowUsesCheckpointBoundary() {
         val first = node(message("old"), message("old-selected"))
         val second = node(message("new", MessageRole.ASSISTANT))

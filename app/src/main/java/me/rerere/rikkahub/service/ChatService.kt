@@ -81,6 +81,7 @@ import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
+import me.rerere.rikkahub.utils.AUTO_COMPACT_THRESHOLD_RATIO
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.effectiveContextLength
 import java.util.Locale
@@ -103,7 +104,7 @@ internal fun backgroundTextGenerationParams(
     sessionId = conversationId.toString(),
 )
 
-private const val AUTO_COMPRESS_THRESHOLD_RATIO = 0.8f
+private const val AUTO_COMPRESS_THRESHOLD_RATIO = AUTO_COMPACT_THRESHOLD_RATIO
 private const val AUTO_COMPRESS_RETAIN_RATIO = 0.16f
 private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
 private const val MAX_MESSAGES_PER_CHUNK = 256

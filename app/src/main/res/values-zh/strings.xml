@@ -1401,6 +1401,7 @@
   <string name="setting_provider_page_context_length_placeholder">使用模型默认值</string>
   <string name="setting_provider_page_context_length_hint">支持 4096、256K、1M 等格式。留空时使用模型注册表数值。</string>
   <string name="setting_provider_page_context_length_invalid">请输入不超过 1 亿的正整数 Token。</string>
+  <string name="chat_context_usage_tooltip">已使用 %1$s / %2$s 上下文</string>
   <string name="chat_checkpoint_title">上下文检查点</string>
   <string name="chat_checkpoint_message_count">包含 %1$d 条消息</string>
   <string name="setting_display_page_background_effect_title">输入栏背景效果</string>

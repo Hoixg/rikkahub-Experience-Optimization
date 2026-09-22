@@ -8,11 +8,6 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
 import kotlinx.datetime.toKotlinLocalDateTime
 
-fun Model.effectiveContextLength(): Int =
-    contextLength?.takeIf { it > 0 }
-        ?: ModelRegistry.MODEL_CONTEXT_LENGTH.getData(modelId)?.takeIf { it > 0 }
-        ?: DEFAULT_CONTEXT_LENGTH
-
 fun parseContextLengthInput(text: String): Int? {
     val normalized = text.trim().lowercase().replace(" ", "")
     if (normalized.isEmpty()) return null
@@ -33,7 +28,16 @@ fun formatContextLength(tokens: Int?): String = when {
     else -> tokens.toString()
 }
 
+const val AUTO_COMPACT_THRESHOLD_RATIO = 0.8f
+
 private const val DEFAULT_CONTEXT_LENGTH = 256 * 1024
+
+fun Model?.effectiveContextLength(): Int =
+    this?.contextLength?.takeIf { it > 0 }
+        ?: this?.modelId
+            ?.let { ModelRegistry.MODEL_CONTEXT_LENGTH.getData(it) }
+            ?.takeIf { value -> value > 0 }
+        ?: DEFAULT_CONTEXT_LENGTH
 
 private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
     atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()

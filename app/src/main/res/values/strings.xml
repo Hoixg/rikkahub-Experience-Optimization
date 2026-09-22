@@ -1412,6 +1412,7 @@
   <string name="setting_provider_page_context_length_placeholder">Model default</string>
   <string name="setting_provider_page_context_length_hint">Examples: 4096, 256K, 1M. Leave empty to use the model registry value.</string>
   <string name="setting_provider_page_context_length_invalid">Enter a positive token count up to 100M.</string>
+  <string name="chat_context_usage_tooltip">Used %1$s / %2$s of context</string>
   <string name="chat_checkpoint_title">Context checkpoint</string>
   <string name="chat_checkpoint_message_count">%1$d messages included</string>
   <string name="setting_display_page_background_effect_title">Input bar background effect</string>
