@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.toKotlinLocalDateTime
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
@@ -47,6 +48,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
+import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
@@ -60,6 +62,7 @@ import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findRequestProvider
 import me.rerere.rikkahub.data.datastore.getAssistantById
@@ -78,8 +81,13 @@ import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
+import me.rerere.rikkahub.utils.estimateTokenCount
+import me.rerere.rikkahub.utils.effectiveContextLength
 import java.util.Locale
 import kotlin.uuid.Uuid
+
+private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
+    atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()
 
 private const val TAG = "ChatService"
 
@@ -94,6 +102,11 @@ internal fun backgroundTextGenerationParams(
     customBody = model.customBodies,
     sessionId = conversationId.toString(),
 )
+
+private const val AUTO_COMPRESS_THRESHOLD_RATIO = 0.8f
+private const val AUTO_COMPRESS_RETAIN_RATIO = 0.16f
+private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
+private const val MAX_MESSAGES_PER_CHUNK = 256
 
 internal fun createForkConversation(
     source: Conversation,
@@ -623,6 +636,11 @@ class ChatService(
             checkInvalidMessages(conversationId)
             val conversation = getConversationFlow(conversationId).value
 
+            if (settings.enableAutoCompaction && messageRange == null) {
+                autoCompressIfNeeded(conversationId, conversation)
+            }
+            val requestConversation = getConversationFlow(conversationId).value
+
             val tools = try {
                 chatToolFactory.createTools(
                     settings = settings,
@@ -650,7 +668,7 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = conversation.currentMessages.let {
+                messages = requestConversation.requestWindowMessages().let {
                     if (messageRange != null) {
                         it.subList(messageRange.start, messageRange.endInclusive + 1)
                     } else {
@@ -921,82 +939,172 @@ class ChatService(
         additionalPrompt: String,
         targetTokens: Int,
         keepRecentMessages: Int = 32
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.findModelById(settings.compressModelId)
             ?: settings.getCurrentChatModel()
-            ?: throw IllegalStateException("No model available for compression")
-        val provider = model.findRequestProvider(settings.providers)
-            ?: throw IllegalStateException("Provider not found")
-
-        val providerHandler = providerManager.getProviderByType(provider)
-
-        val maxMessagesPerChunk = 256
-        val allMessages = conversation.currentMessages
-
-        // Split messages into those to compress and those to keep
-        val messagesToCompress: List<UIMessage>
-        val messagesToKeep: List<UIMessage>
-
-        if (keepRecentMessages > 0 && allMessages.size > keepRecentMessages) {
-            messagesToCompress = allMessages.dropLast(keepRecentMessages)
-            messagesToKeep = allMessages.takeLast(keepRecentMessages)
-        } else if (keepRecentMessages > 0) {
-            // Not enough messages to compress while keeping recent ones
-            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
+            ?: return Result.failure(IllegalStateException("No model available for compression"))
+        val windowTokens = model.effectiveContextLength()
+        val nodes = conversation.windowNodes()
+        val keepCount = if (keepRecentMessages > 0) {
+            keepRecentMessages
         } else {
-            messagesToCompress = allMessages
-            messagesToKeep = emptyList()
+            keepNodeCountByTokenBudget(nodes, (windowTokens * AUTO_COMPRESS_RETAIN_RATIO).toInt())
+        }
+        val nodesToCompress = nodes.dropLast(keepCount)
+        val nodesToKeep = nodes.takeLast(keepCount)
+        if (nodesToCompress.isEmpty()) {
+            return Result.failure(IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages)))
         }
 
-        fun splitMessages(messages: List<UIMessage>): List<List<UIMessage>> {
-            if (messages.size <= maxMessagesPerChunk) return listOf(messages)
-            val mid = messages.size / 2
-            val left = splitMessages(messages.subList(0, mid))
-            val right = splitMessages(messages.subList(mid, messages.size))
-            return left + right
-        }
+        return runCatching {
+            val summary = compressNodesToSummary(
+                conversationId = conversationId,
+                conversation = conversation,
+                nodesToCompress = nodesToCompress,
+                settings = settings,
+                model = model,
+                targetTokens = targetTokens,
+                userInstructions = additionalPrompt,
+            ).orEmpty()
+            require(summary.isNotBlank()) { "Failed to generate compressed summary" }
 
-        suspend fun compressMessages(messages: List<UIMessage>): String {
-            val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
-            val prompt = settings.compressPrompt.applyPlaceholders(
-                "content" to contentToCompress,
-                "target_tokens" to targetTokens.toString(),
-                "additional_context" to if (additionalPrompt.isNotBlank()) {
-                    "Additional instructions from user: $additionalPrompt"
-                } else "",
-                "locale" to Locale.getDefault().displayName
+            val boundaryNodeId = nodesToCompress.last().id
+            val checkpoint = CompressionSummary(
+                content = summary,
+                messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
+                boundaryNodeId = boundaryNodeId,
             )
-
-            val result = providerHandler.generateText(
-                providerSetting = provider,
-                messages = listOf(UIMessage.user(prompt)),
-                params = backgroundTextGenerationParams(model, conversationId),
-            )
-
-            return result.message.toText().trim().takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Failed to generate compressed summary")
+            saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
         }
+    }
 
-        val compressedSummaries = coroutineScope {
-            splitMessages(messagesToCompress)
-                .map { chunk -> async { compressMessages(chunk) } }
-                .awaitAll()
-        }
+    private suspend fun autoCompressIfNeeded(
+        conversationId: Uuid,
+        conversation: Conversation,
+    ) {
+        if (conversation.windowNodes().size <= 2) return
+        val settings = settingsStore.settingsFlow.first()
+        val assistant = settings.getAssistantById(conversation.assistantId)
+            ?: settings.getCurrentAssistant()
+        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        val windowTokens = model.effectiveContextLength()
+        val usedTokens = estimateConversationTokens(conversation, model)
+        if (usedTokens < (windowTokens * AUTO_COMPRESS_THRESHOLD_RATIO).toInt()) return
 
-        // Create new conversation with compressed history as multiple user messages + kept messages
-        val newMessageNodes = buildList {
-            compressedSummaries.forEach { summary ->
-                add(UIMessage.user(summary).toMessageNode())
+        compressNodesToSummary(
+            conversationId = conversationId,
+            conversation = conversation,
+            nodesToCompress = autoCompressNodes(conversation, windowTokens),
+            settings = settings,
+            model = model,
+            targetTokens = AUTO_COMPRESS_TARGET_TOKENS,
+            userInstructions = "",
+        )?.let { summary ->
+            if (summary.isNotBlank()) {
+                val nodes = conversation.windowNodes()
+                val nodesToCompress = autoCompressNodes(conversation, windowTokens)
+                val checkpoint = CompressionSummary(
+                    content = summary,
+                    messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
+                    boundaryNodeId = nodesToCompress.lastOrNull()?.id ?: nodes.lastOrNull()?.id,
+                )
+                saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
             }
-            addAll(messagesToKeep.map { it.toMessageNode() })
         }
-        val newConversation = conversation.copy(
-            messageNodes = newMessageNodes,
-            chatSuggestions = emptyList(),
-        )
+    }
 
-        saveConversation(conversationId, newConversation)
+    private fun autoCompressNodes(conversation: Conversation, windowTokens: Int): List<MessageNode> {
+        val nodes = conversation.windowNodes()
+        val keepCount = keepNodeCountByTokenBudget(
+            nodes = nodes,
+            keepBudgetTokens = (windowTokens * AUTO_COMPRESS_RETAIN_RATIO).toInt(),
+        )
+        return nodes.dropLast(keepCount)
+    }
+
+    private fun keepNodeCountByTokenBudget(nodes: List<MessageNode>, keepBudgetTokens: Int): Int {
+        var count = 0
+        var tokens = 0
+        for (node in nodes.asReversed()) {
+            val nodeTokens = estimateTokenCount(listOf(node.currentMessage))
+            if (count >= 2 && tokens + nodeTokens > keepBudgetTokens) break
+            tokens += nodeTokens
+            count++
+        }
+        return count.coerceAtMost(nodes.size)
+    }
+
+    private fun estimateConversationTokens(conversation: Conversation, model: Model): Int {
+        val requestWindow = conversation.requestWindowMessages()
+        val lastAssistant = requestWindow.lastOrNull { it.role == MessageRole.ASSISTANT }
+        val checkpoint = conversation.activeCompression()
+        val usage = lastAssistant?.usage?.promptTokens ?: 0
+        val finishedAt = lastAssistant?.finishedAt ?: lastAssistant?.createdAt
+        val usageUsable = usage > 0 && lastAssistant != null && (
+            checkpoint == null ||
+                (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
+            )
+        return if (usageUsable) usage else estimateTokenCount(requestWindow)
+    }
+
+    private fun splitNodes(nodes: List<MessageNode>): List<List<MessageNode>> {
+        if (nodes.size <= MAX_MESSAGES_PER_CHUNK) return listOf(nodes)
+        val mid = nodes.size / 2
+        return splitNodes(nodes.subList(0, mid)) + splitNodes(nodes.subList(mid, nodes.size))
+    }
+
+    private suspend fun compressNodesToSummary(
+        conversationId: Uuid,
+        conversation: Conversation,
+        nodesToCompress: List<MessageNode>,
+        settings: Settings,
+        model: Model,
+        targetTokens: Int,
+        userInstructions: String,
+    ): String? {
+        if (nodesToCompress.isEmpty()) return null
+        return runCatching {
+            val provider = model.findRequestProvider(settings.providers)
+                ?: error("Provider not found")
+            val providerHandler = providerManager.getProviderByType(provider)
+            val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
+            val additionalContext = buildString {
+                if (priorSummary.isNotBlank()) {
+                    append("PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):")
+                    appendLine(priorSummary)
+                }
+                if (userInstructions.isNotBlank()) {
+                    if (isNotEmpty()) appendLine()
+                    append("Additional instructions from user: ")
+                    append(userInstructions)
+                }
+            }
+
+            val summaries = coroutineScope {
+                splitNodes(nodesToCompress).map { nodes ->
+                    async {
+                        val content = nodes.joinToString("\n\n") { it.currentMessage.summaryAsText(maxLength = 2_000) }
+                        val prompt = settings.compressPrompt.applyPlaceholders(
+                            "content" to content,
+                            "target_tokens" to targetTokens.toString(),
+                            "additional_context" to additionalContext,
+                            "locale" to Locale.getDefault().displayName,
+                        )
+                        providerHandler.generateText(
+                            providerSetting = provider,
+                            messages = listOf(UIMessage.user(prompt)),
+                            params = backgroundTextGenerationParams(model, conversationId),
+                        ).message.toText().trim().takeIf { it.isNotBlank() }
+                            ?: error("Empty compression result")
+                    }
+                }.awaitAll()
+            }
+            summaries.joinToString("\n\n")
+        }.onFailure { error ->
+            if (error is CancellationException) throw error
+            Log.w(TAG, "compressNodesToSummary failed", error)
+        }.getOrNull()
     }
 
     // ---- 对话状态更新 ----

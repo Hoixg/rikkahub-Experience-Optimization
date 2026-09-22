@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -32,6 +33,7 @@ import java.util.concurrent.atomic.AtomicLong
 class WorkspaceTerminalSessionManager internal constructor(
     context: Context,
     private val appScope: AppScope,
+    private val workspaceRepository: WorkspaceRepository,
 ) {
     private val appContext = context.applicationContext
     private val workspaceStates = MutableStateFlow<Map<String, WorkspaceTerminalTabsState>>(emptyMap())
@@ -254,6 +256,11 @@ class WorkspaceTerminalSessionManager internal constructor(
                 context = appContext,
                 root = root,
                 client = client,
+                prootArgs = workspaceRepository.prootArgs(
+                    root = root,
+                    cwd = "",
+                    mounts = workspaceRepository.getByRoot(root)?.mountDirList().orEmpty(),
+                ),
                 shellCompatibilityMode = shellCompatibilityMode,
             )
         }.onFailure { error ->

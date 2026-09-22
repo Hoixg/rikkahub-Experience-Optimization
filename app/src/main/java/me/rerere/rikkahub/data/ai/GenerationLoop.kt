@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -40,6 +41,9 @@ import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
+import me.rerere.rikkahub.data.ai.limits.ToolRuntimeLimits
+import me.rerere.rikkahub.data.ai.tools.HardlineCommandGuard
+import me.rerere.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findRequestProvider
@@ -86,7 +90,7 @@ class GenerationLoop(
         assistant: Assistant,
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
-        maxSteps: Int = 256,
+        maxSteps: Int = ToolRuntimeLimits.maxToolSteps,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         conversationId: Uuid? = null,
@@ -96,15 +100,10 @@ class GenerationLoop(
     ): Flow<GenerationChunk> = flow {
         val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
+        val turnStartedAtMs = android.os.SystemClock.elapsedRealtime()
+        AgentTurnTracker.reset()
 
         var messages: List<UIMessage> = messages
-
-        // 压缩结果只用于组装模型请求，messages 始终保留完整聊天记录。
-        val autoCompaction = if (settings.enableAutoCompaction) {
-            maybeAutoCompactMessages(settings, model, assistant, messages)
-        } else {
-            null
-        }
 
         for (stepIndex in 0 until maxSteps) {
             Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
@@ -128,16 +127,8 @@ class GenerationLoop(
 
             val toolsToProcess: List<UIMessagePart.Tool>
 
-            // Skip generation if we have approved/denied tool calls to handle
             if (pendingTools.isEmpty()) {
-                val requestMessagesForStep = autoCompaction?.let { compaction ->
-                    listOf(UIMessage.user(compaction.summary).copy(isSynthetic = true)) +
-                        messages.drop(compaction.sourceMessageCount)
-                } ?: if (settings.enableAutoCompaction) {
-                    messages.limitContext(assistant.contextMessageLimit)
-                } else {
-                    messages
-                }
+                val requestMessagesForStep = messages
                 generateInternal(
                     assistant = assistant,
                     settings = settings,
@@ -207,7 +198,17 @@ class GenerationLoop(
                 var hasPendingApproval = false
                 val updatedTools = toolCalls.map { tool ->
                     val toolDef = tools.find { it.name == tool.toolName }
+                    val hardlineReason = HardlineCommandGuard.checkTool(tool.toolName, tool.input)
                     when {
+                        hardlineReason != null && tool.approvalState is ToolApprovalState.Auto -> {
+                            Log.w(TAG, "generateText: hardline-blocked ${tool.toolName}: $hardlineReason")
+                            tool.copy(
+                                approvalState = ToolApprovalState.Denied(
+                                    "blocked by safety floor (hardline): $hardlineReason. " +
+                                        "This command cannot run via the agent under any circumstances."
+                                )
+                            )
+                        }
                         // Tool needs approval and state is Auto -> set to Pending
                         toolDef?.needsApproval(tool.inputAsJson()) == true &&
                             tool.approvalState is ToolApprovalState.Auto -> {
@@ -253,6 +254,7 @@ class GenerationLoop(
 
             // Handle tools (execute approved tools, handle denied tools)
             val executedTools = arrayListOf<UIMessagePart.Tool>()
+            var budgetExhausted = false
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
@@ -290,6 +292,48 @@ class GenerationLoop(
 
                     else -> {
                         // Auto or Approved - execute the tool
+                        HardlineCommandGuard.checkTool(tool.toolName, tool.input)?.let { reason ->
+                            executedTools += tool.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(
+                                        json.encodeToString(
+                                            buildJsonObject {
+                                                put(
+                                                    "error",
+                                                    JsonPrimitive(
+                                                        "blocked by safety floor (hardline): $reason. " +
+                                                            "This command cannot run via the agent under any circumstances."
+                                                    )
+                                                )
+                                            }
+                                        )
+                                    )
+                                )
+                            )
+                            return@forEach
+                        }
+                        val remainingBudgetMs = remainingTurnBudgetMs(
+                            startedAtMs = turnStartedAtMs,
+                            budgetMs = ToolRuntimeLimits.turnBudgetMs,
+                        )
+                        if (remainingBudgetMs <= 0L) {
+                            budgetExhausted = true
+                            executedTools += tool.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(
+                                        json.encodeToString(
+                                            buildJsonObject {
+                                                put(
+                                                    "error",
+                                                    JsonPrimitive("turn_budget_exceeded")
+                                                )
+                                            }
+                                        )
+                                    )
+                                )
+                            )
+                            break
+                        }
                         runCatching {
                             val toolDef = tools.find { toolDef -> toolDef.name == tool.toolName }
                                 ?: error("Tool ${tool.toolName} not found")
@@ -299,7 +343,21 @@ class GenerationLoop(
                                 error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = toolDef.execute(args)
+                            val result = withTimeoutOrNull(remainingBudgetMs) {
+                                toolDef.execute(args)
+                            } ?: listOf(
+                                UIMessagePart.Text(
+                                    json.encodeToString(
+                                        buildJsonObject {
+                                            put("error", JsonPrimitive("tool_timeout"))
+                                            put(
+                                                "timeout_ms",
+                                                JsonPrimitive(remainingBudgetMs.toString())
+                                            )
+                                        }
+                                    )
+                                )
+                            )
                             val hasShellAccess = tools.any { it.name == "workspace_shell" }
                             executedTools += tool.copy(
                                 output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
@@ -354,6 +412,19 @@ class GenerationLoop(
                     )
                 )
             )
+
+            if (remainingTurnBudgetMs(
+                    startedAtMs = turnStartedAtMs,
+                    budgetMs = ToolRuntimeLimits.turnBudgetMs,
+                ) <= 0L
+            ) {
+                Log.w(TAG, "generateText: turn budget exhausted after tool execution")
+                break
+            }
+            if (budgetExhausted) {
+                Log.w(TAG, "generateText: turn budget reached before queued tools")
+                break
+            }
         }
 
     }.flowOn(Dispatchers.IO)
@@ -507,87 +578,6 @@ class GenerationLoop(
         }
     }
 
-    private data class AutoCompaction(
-        val summary: String,
-        val sourceMessageCount: Int,
-    )
-
-    private suspend fun maybeAutoCompactMessages(
-        settings: Settings,
-        model: Model,
-        assistant: Assistant,
-        messages: List<UIMessage>,
-    ): AutoCompaction? {
-        if (messages.size < 2) return null
-
-        val configuredLimit = assistant.contextMessageLimit.takeIf { it > 0 }
-        val estimatedTokens = messages.sumOf { message ->
-            (compactionSourceText(message, maxLength = 4_000).length / 3).coerceAtLeast(1)
-        }
-        val modelLimit = ModelRegistry.MODEL_CONTEXT_LENGTH.getData(model.modelId)
-            ?.takeIf { it > 0 }
-        val shouldCompact = when {
-            configuredLimit != null -> messages.size > configuredLimit
-            modelLimit != null -> estimatedTokens >= modelLimit * 3 / 4
-            else -> false
-        }
-        if (!shouldCompact) return null
-
-        val keepCount = when {
-            configuredLimit != null -> (configuredLimit / 2).coerceAtLeast(4)
-            else -> (messages.size / 3).coerceAtLeast(4)
-        }.coerceAtMost(messages.size - 1)
-        val sourceMessages = messages.dropLast(keepCount)
-        val recentMessages = messages.takeLast(keepCount)
-        if (sourceMessages.isEmpty()) return null
-
-        val compressionModel = settings.findModelById(settings.compressModelId)
-            ?: settings.findModelById(settings.chatModelId)
-            ?: return null
-        val compressionProvider = compressionModel.findRequestProvider(settings.providers)
-            ?: return null
-        val compressionHandler = providerManager.getProviderByType(compressionProvider)
-        val content = sourceMessages.joinToString("\\n\\n") {
-            compactionSourceText(it, maxLength = 4_000)
-        }.take(160_000)
-        val prompt = settings.compressPrompt.applyPlaceholders(
-            "content" to content,
-            "target_tokens" to ((modelLimit ?: 2_000) / 4).coerceAtLeast(256).toString(),
-            "additional_context" to "这是自动整理。请保留用户目标、关键决定、代码或文件路径、工具结果和未完成事项。",
-            "locale" to Locale.getDefault().displayName,
-        )
-        val summary = runCatching {
-            compressionHandler.generateText(
-                providerSetting = compressionProvider,
-                messages = listOf(UIMessage.user(prompt)),
-                params = TextGenerationParams(model = compressionModel),
-            ).message.toText().trim()
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: return null
-
-        return AutoCompaction(summary = summary, sourceMessageCount = sourceMessages.size)
-    }
-
-    private fun compactionSourceText(message: UIMessage, maxLength: Int): String {
-        val text = buildString {
-            appendLine("[" + message.role.name + "]")
-            message.parts.forEach { part ->
-                when (part) {
-                    is UIMessagePart.Text -> appendLine(part.text)
-                    is UIMessagePart.Reasoning -> appendLine(part.reasoning)
-                    is UIMessagePart.Tool -> {
-                        appendLine("[工具调用] " + part.toolName)
-                        appendLine("参数: " + part.input)
-                        appendLine("结果:")
-                        part.output.filterIsInstance<UIMessagePart.Text>().forEach { appendLine(it.text) }
-                    }
-                    else -> appendLine("[非文本内容]")
-                }
-            }
-        }
-        return if (text.length <= maxLength) text else text.take(maxLength) + "..."
-    }
-
     private suspend fun <T> executeProviderRequestWithRetry(
         processingStatus: MutableStateFlow<String?>,
         enabled: Boolean,
@@ -683,4 +673,8 @@ class GenerationLoop(
         ) + nonTextParts
     }
 
+    companion object {
+        internal fun remainingTurnBudgetMs(startedAtMs: Long, budgetMs: Long): Long =
+            (budgetMs - (android.os.SystemClock.elapsedRealtime() - startedAtMs)).coerceAtLeast(0L)
+    }
 }

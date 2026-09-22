@@ -27,6 +27,7 @@ import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceCommandResult
+import me.rerere.workspace.WorkspaceMountDir
 import me.rerere.workspace.WorkspaceStorageArea
 
 class WorkspaceDetailVM(
@@ -116,6 +117,9 @@ class WorkspaceDetailVM(
 
     private val _settingsError = MutableStateFlow<String?>(null)
     val settingsError = _settingsError.asStateFlow()
+
+    private val _mountError = MutableStateFlow<String?>(null)
+    val mountError = _mountError.asStateFlow()
 
     fun dismissSettingsError() {
         _settingsError.value = null
@@ -505,6 +509,37 @@ class WorkspaceDetailVM(
             val workspace = repository.getById(id)
             _state.update { it.copy(workspace = workspace) }
         }
+    }
+
+    fun addMountDir(mountDir: WorkspaceMountDir) {
+        viewModelScope.launch {
+            _mountError.value = null
+            runCatching { repository.addMountDir(id, mountDir) }
+                .onFailure { error -> _mountError.value = error.message ?: "Failed to add mount" }
+            state.value.workspace?.let { terminalSessionManager.closeWorkspace(it.root) }
+            loadWorkspace()
+        }
+    }
+
+    fun removeMountDir(target: String) {
+        viewModelScope.launch {
+            _mountError.value = null
+            repository.removeMountDir(id, target)
+            state.value.workspace?.let { terminalSessionManager.closeWorkspace(it.root) }
+            loadWorkspace()
+        }
+    }
+
+    fun setMountDirReadOnly(target: String, readOnly: Boolean) {
+        viewModelScope.launch {
+            repository.setMountDirReadOnly(id, target, readOnly)
+            state.value.workspace?.let { terminalSessionManager.closeWorkspace(it.root) }
+            loadWorkspace()
+        }
+    }
+
+    fun dismissMountError() {
+        _mountError.value = null
     }
 
     companion object {

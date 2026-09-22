@@ -120,6 +120,8 @@ import me.rerere.rikkahub.ui.pages.setting.SettingProviderPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
+import me.rerere.rikkahub.ui.pages.setting.termux.SettingTermuxPage
+
 import me.rerere.rikkahub.ui.pages.share.handler.ShareHandlerPage
 import me.rerere.rikkahub.ui.pages.stats.StatsPage
 import me.rerere.rikkahub.ui.pages.translator.TranslatorPage
@@ -460,6 +462,10 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingMcp> {
                                 SettingMcpPage()
                             }
+                            entry<Screen.SettingTermux> {
+                                SettingTermuxPage()
+                            }
+
 
                             entry<Screen.SettingDonate> {
                                 SettingDonatePage()
@@ -673,6 +679,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingMcp : Screen
+    @Serializable
+    data object SettingTermux : Screen
+
 
     @Serializable
     data object SettingDonate : Screen

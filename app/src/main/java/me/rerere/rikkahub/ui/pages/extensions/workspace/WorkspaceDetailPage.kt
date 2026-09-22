@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -98,6 +99,7 @@ import me.rerere.rikkahub.utils.plus
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
+import me.rerere.workspace.WorkspaceMountDir
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
@@ -117,6 +119,7 @@ fun WorkspaceDetailPage(
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
+    val mountError by vm.mountError.collectAsStateWithLifecycle()
     val folderExportResult by vm.folderExportResult.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
@@ -124,6 +127,7 @@ fun WorkspaceDetailPage(
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    var showMountDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
@@ -253,6 +257,9 @@ fun WorkspaceDetailPage(
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
+                    onAddMount = { showMountDialog = true },
+                    onRemoveMount = vm::removeMountDir,
+                    onMountReadOnlyChange = vm::setMountDirReadOnly,
                 )
 
                 1 -> WorkspaceFilesPage(
@@ -393,6 +400,29 @@ fun WorkspaceDetailPage(
         )
     }
 
+    mountError?.let { message ->
+        AlertDialog(
+            onDismissRequest = vm::dismissMountError,
+            title = { Text(stringResource(R.string.workspace_detail_mount_failed)) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = vm::dismissMountError) {
+                    Text(stringResource(R.string.common_confirm))
+                }
+            },
+        )
+    }
+
+    if (showMountDialog) {
+        AddMountDirDialog(
+            onDismiss = { showMountDialog = false },
+            onConfirm = { mount ->
+                vm.addMountDir(mount)
+                showMountDialog = false
+            },
+        )
+    }
+
     previewImageUri?.let { uri ->
         ImagePreviewDialog(
             images = listOf(uri),
@@ -424,6 +454,9 @@ private fun WorkspaceBasicPage(
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
+    onAddMount: () -> Unit,
+    onRemoveMount: (String) -> Unit,
+    onMountReadOnlyChange: (String, Boolean) -> Unit,
 ) {
     val shellStatus = workspace?.shellStatus
     val installing = installProgress != null || shellStatus == WorkspaceShellStatus.INSTALLING.name
@@ -541,6 +574,15 @@ private fun WorkspaceBasicPage(
                 onToolApprovalChange = onToolApprovalChange,
             )
         }
+
+        item {
+            WorkspaceMountDirCard(
+                workspace = workspace,
+                onAdd = onAddMount,
+                onRemove = onRemoveMount,
+                onReadOnlyChange = onMountReadOnlyChange,
+            )
+        }
     }
 }
 
@@ -603,6 +645,228 @@ private fun WorkspaceToolApprovalCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WorkspaceMountDirCard(
+    workspace: WorkspaceEntity?,
+    onAdd: () -> Unit,
+    onRemove: (String) -> Unit,
+    onReadOnlyChange: (String, Boolean) -> Unit,
+) {
+    val mounts = workspace?.mountDirList().orEmpty()
+    val context = LocalContext.current
+    val allFilesAccessIntent = remember(context) {
+        Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            .setData(android.net.Uri.parse("package:${context.packageName}"))
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CustomColors.cardColorsOnSurfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_mount_dirs),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.workspace_detail_mount_dirs_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (mounts.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_mount_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                mounts.forEach { mount ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = mount.target,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = mount.sourcePath,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            IconButton(onClick = { onRemove(mount.target) }) {
+                                Icon(HugeIcons.Delete01, contentDescription = null)
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.workspace_detail_mount_read_only),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Switch(
+                                checked = mount.readOnly,
+                                onCheckedChange = { onReadOnlyChange(mount.target, it) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            TextButton(
+                onClick = {
+                    runCatching { context.startActivity(allFilesAccessIntent) }
+                },
+            ) {
+                Text(stringResource(R.string.workspace_detail_mount_all_files_access))
+            }
+
+            Button(
+                onClick = onAdd,
+                enabled = workspace != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(HugeIcons.Folder01, contentDescription = null)
+                Text(
+                    text = stringResource(R.string.workspace_detail_mount_add),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddMountDirDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (WorkspaceMountDir) -> Unit,
+) {
+    val context = LocalContext.current
+    var sourcePath by rememberSaveable { mutableStateOf("") }
+    var target by rememberSaveable { mutableStateOf("") }
+    var readOnly by rememberSaveable { mutableStateOf(false) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val treeLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val derived = derivePrimaryStoragePath(uri)
+        if (derived == null) {
+            error = context.getString(R.string.workspace_detail_mount_uri_unsupported)
+        } else {
+            sourcePath = derived
+            error = null
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.workspace_detail_mount_add)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = sourcePath,
+                    onValueChange = {
+                        sourcePath = it
+                        error = null
+                    },
+                    label = { Text(stringResource(R.string.workspace_detail_mount_source)) },
+                    placeholder = { Text("/storage/emulated/0/Documents") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedButton(onClick = { treeLauncher.launch(null) }) {
+                    Text(stringResource(R.string.workspace_detail_mount_pick_directory))
+                }
+                OutlinedTextField(
+                    value = target,
+                    onValueChange = {
+                        target = it
+                        error = null
+                    },
+                    label = { Text(stringResource(R.string.workspace_detail_mount_target)) },
+                    placeholder = { Text("/data/documents") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.workspace_detail_mount_read_only),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = readOnly, onCheckedChange = { readOnly = it })
+                }
+                if (error != null) {
+                    Text(
+                        text = error.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        WorkspaceMountDir(
+                            sourcePath = sourcePath,
+                            target = target,
+                            readOnly = readOnly,
+                        )
+                    )
+                },
+            ) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+private fun derivePrimaryStoragePath(uri: android.net.Uri): String? {
+    val documentId = runCatching { android.provider.DocumentsContract.getTreeDocumentId(uri) }
+        .getOrNull() ?: return null
+    val segments = documentId.split(':')
+    if (segments.size < 2 || segments[0] != "primary") return null
+    val relative = segments[1].trim('/')
+    return if (relative.isEmpty()) {
+        "/storage/emulated/0"
+    } else {
+        "/storage/emulated/0/$relative"
     }
 }
 

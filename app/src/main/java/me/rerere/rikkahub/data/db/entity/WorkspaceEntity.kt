@@ -6,6 +6,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.workspace.Workspace
+import me.rerere.workspace.WorkspaceMountDir
 import me.rerere.workspace.WorkspaceShellStatus
 
 @Entity(
@@ -35,10 +36,18 @@ data class WorkspaceEntity(
     val toolApprovals: String = "{}",
     @ColumnInfo("shell_compatibility_mode", defaultValue = "0")
     val shellCompatibilityMode: Boolean = false,
+    @ColumnInfo("mount_dirs", defaultValue = "[]")
+    val mountDirs: String = "[]",
 ) {
     fun toolApprovalOverrides(): Map<String, Boolean> = runCatching {
         JsonInstant.decodeFromString<Map<String, Boolean>>(toolApprovals)
     }.getOrDefault(emptyMap())
+
+    fun mountDirList(): List<WorkspaceMountDir> = runCatching {
+        JsonInstant.decodeFromString<List<WorkspaceMountDir>>(mountDirs)
+    }.getOrDefault(emptyList()).filter {
+        it.sourcePath.startsWith("/") && it.target.startsWith("/")
+    }
 
     fun toWorkspace(): Workspace = Workspace(
         id = id,
@@ -49,5 +58,6 @@ data class WorkspaceEntity(
         createdAt = createdAt,
         updatedAt = updatedAt,
         lastAccessAt = lastAccessAt,
+        mountDirs = mountDirList(),
     )
 }

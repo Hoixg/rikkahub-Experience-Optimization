@@ -49,6 +49,7 @@ import me.rerere.hugeicons.stroke.Book01
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.Bookshelf01
 import me.rerere.hugeicons.stroke.Brain02
+import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Clapping01
 import me.rerere.hugeicons.stroke.Database02
 import me.rerere.hugeicons.stroke.GlobalSearch
@@ -230,6 +231,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Megaphone01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingTermux) },
+                        leadingContent = { Icon(HugeIcons.ComputerTerminal01, null) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_termux_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_termux)) },
                     )
                 }
             }

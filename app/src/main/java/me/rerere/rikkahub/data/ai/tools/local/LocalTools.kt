@@ -6,6 +6,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.tts.provider.TTSManager
+import me.rerere.rikkahub.data.preferences.TermuxPreferences
 
 class LocalTools(
     private val context: Context,
@@ -14,6 +15,7 @@ class LocalTools(
     private val settingsStore: SettingsStore,
     private val storageGrantStore: StorageVolumeGrantStore,
     private val safPickerResultBuffer: SafPickerResultBuffer,
+    private val termuxPreferences: TermuxPreferences,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
 

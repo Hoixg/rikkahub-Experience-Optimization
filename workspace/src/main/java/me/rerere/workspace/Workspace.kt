@@ -1,5 +1,7 @@
 package me.rerere.workspace
 
+import kotlinx.serialization.Serializable
+
 data class Workspace(
     val id: String,
     val name: String,
@@ -8,6 +10,15 @@ data class Workspace(
     val createdAt: Long,
     val updatedAt: Long,
     val lastAccessAt: Long? = null,
+    /** User-configured host directories mounted into this workspace rootfs. */
+    val mountDirs: List<WorkspaceMountDir> = emptyList(),
+)
+
+@Serializable
+data class WorkspaceMountDir(
+    val sourcePath: String,
+    val target: String,
+    val readOnly: Boolean = false,
 )
 
 enum class WorkspaceShellStatus {

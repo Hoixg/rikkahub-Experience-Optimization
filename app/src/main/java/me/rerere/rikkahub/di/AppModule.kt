@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
+import me.rerere.rikkahub.data.preferences.TermuxPreferences
 import me.rerere.rikkahub.data.ai.tools.local.SafPickerResultBuffer
 import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -25,8 +26,9 @@ val appModule = module {
         AppEventBus()
     }
 
+    single { TermuxPreferences(get()) }
     single {
-        LocalTools(get(), get(), get(), get(), get(), get())
+        LocalTools(get(), get(), get(), get(), get(), get(), get())
     }
     single { StorageVolumeGrantStore(get()) }
     single { SafPickerResultBuffer() }
@@ -55,7 +57,7 @@ val appModule = module {
     }
 
     single {
-        WorkspaceTerminalSessionManager(get(), get())
+        WorkspaceTerminalSessionManager(get(), get(), get())
     }
 
     // 生成通知与业务解耦：ChatService 只发事件，通知由这里消费；

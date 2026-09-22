@@ -15,7 +15,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -24,13 +28,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
+import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionInfo
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
+import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.hasUsageStatsPermission
@@ -47,6 +54,7 @@ fun AssistantLocalToolPage(id: String) {
     )
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val navController = LocalNavController.current
 
     Scaffold(
         topBar = {
@@ -67,7 +75,10 @@ fun AssistantLocalToolPage(id: String) {
         AssistantLocalToolContent(
             innerPadding = innerPadding,
             assistant = assistant,
-            onUpdate = { vm.update(it) }
+            onUpdate = { vm.update(it) },
+            onNavigateToTermuxSettings = {
+                navController.navigate(Screen.SettingTermux)
+            }
         )
     }
 }
@@ -76,12 +87,30 @@ fun AssistantLocalToolPage(id: String) {
 private fun AssistantLocalToolContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
-    onUpdate: (Assistant) -> Unit
+    onUpdate: (Assistant) -> Unit,
+    onNavigateToTermuxSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
+    var termuxState by remember { mutableStateOf(TermuxIntegration.State.NOT_INSTALLED) }
+    var termuxVerified by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        termuxState = TermuxIntegration.state(context)
+        termuxVerified = TermuxIntegration.lastVerifiedOkAtMs > 0L
+    }
+
+    val termuxStatusText = when (termuxState) {
+        TermuxIntegration.State.NOT_INSTALLED ->
+            stringResource(R.string.setting_termux_status_app_missing)
+        TermuxIntegration.State.NO_PERMISSION ->
+            stringResource(R.string.setting_termux_status_permission_missing)
+        TermuxIntegration.State.READY ->
+            if (termuxVerified) stringResource(R.string.setting_termux_status_verify_ok)
+            else stringResource(R.string.setting_termux_status_verify_unknown)
+    }
 
     val calendarPermissionState = rememberPermissionState(
         permissions = setOf(
@@ -237,8 +266,14 @@ private fun AssistantLocalToolContent(
                 trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.Archive), onCheckedChange = { toggleLocalTool(LocalToolOption.Archive, it) }) }
             )
             item(
+                onClick = onNavigateToTermuxSettings,
                 headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_termux_title)) },
-                supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_termux_desc)) },
+                supportingContent = {
+                    Text(
+                        stringResource(R.string.assistant_page_local_tools_termux_desc) +
+                            "\n" + termuxStatusText
+                    )
+                },
                 trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.Termux), onCheckedChange = { toggleLocalTool(LocalToolOption.Termux, it) }) }
             )
         }

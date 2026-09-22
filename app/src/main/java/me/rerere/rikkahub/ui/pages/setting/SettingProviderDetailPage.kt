@@ -10,6 +10,7 @@ import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Share01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.PencilEdit01
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -135,6 +136,8 @@ import me.rerere.rikkahub.ui.pages.setting.components.resetBaseUrlToDefault
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.UiState
+import me.rerere.rikkahub.utils.formatContextLength
+import me.rerere.rikkahub.utils.parseContextLengthInput
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -652,6 +655,15 @@ private fun ModelSettingsForm(
                             }
                         )
 
+                        if (model.type == ModelType.CHAT) {
+                            ContextLengthSetting(
+                                contextLength = model.contextLength,
+                                onUpdate = { contextLength ->
+                                    onModelChange(model.copy(contextLength = contextLength))
+                                },
+                            )
+                        }
+
                         ModelModalitySelector(
                             model = model,
                             inputModalities = model.inputModalities,
@@ -805,6 +817,102 @@ internal fun formatModelApiKeyLabel(entry: ApiKeyInfo): String {
         multiplier.toString()
     }
     return "$name · x$formattedMultiplier"
+}
+
+@Composable
+private fun ContextLengthSetting(
+    contextLength: Int?,
+    onUpdate: (Int?) -> Unit,
+) {
+    var showDialog by rememberSaveable { mutableStateOf(false) }
+
+    OutlinedTextField(
+        value = formatContextLength(contextLength),
+        onValueChange = {},
+        readOnly = true,
+        label = { Text(stringResource(R.string.setting_provider_page_context_length)) },
+        placeholder = { Text(stringResource(R.string.setting_provider_page_context_length_placeholder)) },
+        modifier = Modifier.fillMaxWidth(),
+        trailingIcon = {
+            IconButton(onClick = { showDialog = true }) {
+                Icon(HugeIcons.PencilEdit01, contentDescription = null)
+            }
+        },
+    )
+
+    if (showDialog) {
+        ContextLengthDialog(
+            initialValue = contextLength,
+            onConfirm = {
+                onUpdate(it)
+                showDialog = false
+            },
+            onDismiss = { showDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun ContextLengthDialog(
+    initialValue: Int?,
+    onConfirm: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember(initialValue) { mutableStateOf(formatContextLength(initialValue)) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.setting_provider_page_context_length)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        error = null
+                    },
+                    placeholder = { Text("256K / 1M") },
+                    singleLine = true,
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (error != null) {
+                    Text(
+                        text = error.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.setting_provider_page_context_length_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val parsed = if (text.isBlank()) null else parseContextLengthInput(text)
+                    if (text.isNotBlank() && parsed == null) {
+                        error = context.getString(R.string.setting_provider_page_context_length_invalid)
+                    } else {
+                        onConfirm(parsed)
+                    }
+                },
+            ) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
 
 @Composable

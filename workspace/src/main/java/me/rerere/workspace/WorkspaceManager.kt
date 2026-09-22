@@ -12,10 +12,12 @@ class WorkspaceManager(
     private val shellRunner: WorkspaceShellRunner = HostShellRunner(),
     private val bindMounts: List<WorkspaceBindMount> = emptyList(),
 ) {
+    /** Global mounts shared by every workspace; custom workspace mounts can shadow them. */
+    val globalBindMounts: List<WorkspaceBindMount> get() = bindMounts
+
     private val fileSystem = WorkspaceFileSystem(config)
 
-    // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
-    private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }
+    private val sortedBindMounts = mergeBindMounts(bindMounts, emptyList())
 
     init {
         baseDir.mkdirs()
@@ -39,6 +41,87 @@ class WorkspaceManager(
     fun linuxDir(root: String): File = File(workspaceDir(root), LINUX_DIR)
 
     fun tempDir(root: String): File = File(workspaceDir(root), TEMP_DIR)
+
+    private fun mergeBindMounts(
+        global: List<WorkspaceBindMount>,
+        extra: List<WorkspaceBindMount>,
+    ): List<WorkspaceBindMount> {
+        if (extra.isEmpty()) {
+            return global.sortedByDescending { it.target.trimEnd('/').length }
+        }
+        val extraTargets = extra.mapTo(mutableSetOf()) { it.target.trimEnd('/') }
+        return (extra + global.filterNot { it.target.trimEnd('/') in extraTargets })
+            .sortedByDescending { it.target.trimEnd('/').length }
+    }
+
+    fun buildProotArgs(
+        root: String,
+        cwd: String = "",
+        extraBindMounts: List<WorkspaceBindMount> = emptyList(),
+    ): List<String> {
+        val args = mutableListOf(
+            "--root-id",
+            "--link2symlink",
+            "--kill-on-exit",
+            "-r",
+            linuxDir(root).absolutePath,
+            "-w",
+            prootCwd(cwd),
+            "-b",
+            "${filesDir(root).absolutePath}:$ROOTFS_WORKSPACE_DIR",
+        )
+        mergeBindMounts(bindMounts, extraBindMounts).forEach { mount ->
+            if (mount.source.exists()) {
+                args += "-b"
+                args += mount.prootBindSpec()
+            }
+        }
+        KERNEL_FS_MOUNTS.forEach { path ->
+            if (File(path).exists()) {
+                args += "-b"
+                args += path
+            }
+        }
+        return args
+    }
+
+    fun prootCwd(cwd: String): String {
+        val normalized = cwd.trim().trim('/')
+        return if (normalized.isBlank()) ROOTFS_WORKSPACE_DIR else "$ROOTFS_WORKSPACE_DIR/$normalized"
+    }
+
+    fun bindMountFor(mountDir: WorkspaceMountDir): WorkspaceBindMount = WorkspaceBindMount(
+        source = File(mountDir.sourcePath),
+        target = mountDir.target,
+        readOnly = mountDir.readOnly,
+    )
+
+    fun validateMountDir(
+        root: String,
+        mountDir: WorkspaceMountDir,
+        existing: List<WorkspaceMountDir>,
+    ): String? {
+        val source = mountDir.sourcePath.trim()
+        // On host JVMs the test-created source may use a Windows drive path; Android paths stay POSIX absolute.
+        val sourceFile = File(source)
+        if (!source.startsWith("/") && !sourceFile.isAbsolute) return "source_not_absolute"
+        if (source == "/") return "source_is_root"
+        val target = mountDir.target.trim().trimEnd('/')
+        if (!target.startsWith("/")) return "target_not_absolute"
+        if (target.isEmpty() || target == "/") return "target_is_root"
+        if (RESERVED_MOUNT_TARGETS.any { target == it || target.startsWith("$it/") }) {
+            return "target_reserved"
+        }
+        if (!sourceFile.exists()) return "source_missing"
+        if (!sourceFile.isDirectory) return "source_not_directory"
+        if (existing.any { it.target.trim().trimEnd('/') == target }) return "target_duplicated"
+        if (existing.any { it.sourcePath.trim() == source }) return "source_duplicated"
+        val linux = linuxDir(root)
+        if (sourceFile.canonicalPath.startsWith(linux.canonicalPath + File.separator)) {
+            return "source_inside_rootfs"
+        }
+        return null
+    }
 
     fun hasRootfs(root: String): Boolean = File(linuxDir(root), "bin/sh").isFile
 
@@ -124,15 +207,20 @@ class WorkspaceManager(
      * 可以直接用文件 IO 访问, 无需经过 PRoot; 只是 Rootfs 目录里对应位置是个空挂载点,
      * 按 [WorkspaceStorageArea.LINUX] 解析必然落空。
      */
-    fun resolveRootfsPath(root: String, path: String): RootfsLocation {
+    fun resolveRootfsPath(
+        root: String,
+        path: String,
+        extraBindMounts: List<WorkspaceBindMount> = emptyList(),
+    ): RootfsLocation {
         val trimmed = path.trim().trimEnd('/').ifBlank { "/" }
         require(trimmed.startsWith("/")) { "Rootfs path must be absolute: $path" }
 
-        sortedBindMounts.forEach { mount ->
+        val mounts = if (extraBindMounts.isEmpty()) sortedBindMounts else mergeBindMounts(bindMounts, extraBindMounts)
+        mounts.forEach { mount ->
             val target = mount.target.trimEnd('/')
-            if (trimmed == target) return RootfsLocation(mount.source, "")
+            if (trimmed == target) return RootfsLocation(mount.source, "", mount.readOnly)
             if (trimmed.startsWith("$target/")) {
-                return RootfsLocation(mount.source, trimmed.removePrefix("$target/"))
+                return RootfsLocation(mount.source, trimmed.removePrefix("$target/"), mount.readOnly)
             }
         }
 
@@ -151,17 +239,31 @@ class WorkspaceManager(
         return RootfsLocation(linuxDir(root), trimmed.trimStart('/'))
     }
 
-    fun rootfsFileSize(root: String, path: String): Long =
-        resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
+    fun rootfsFileSize(
+        root: String,
+        path: String,
+        extraBindMounts: List<WorkspaceBindMount> = emptyList(),
+    ): Long = resolveRootfsFile(root, path, extraBindMounts)
+        .also { it.requireReadableFile(path) }
+        .length()
 
-    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
-        val file = resolveRootfsFile(root, path)
+    fun exportRootfsFile(
+        root: String,
+        path: String,
+        outputStream: OutputStream,
+        extraBindMounts: List<WorkspaceBindMount> = emptyList(),
+    ) {
+        val file = resolveRootfsFile(root, path, extraBindMounts)
         file.requireReadableFile(path)
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
     }
 
-    private fun resolveRootfsFile(root: String, path: String): File {
-        val location = resolveRootfsPath(root, path)
+    private fun resolveRootfsFile(
+        root: String,
+        path: String,
+        extraBindMounts: List<WorkspaceBindMount>,
+    ): File {
+        val location = resolveRootfsPath(root, path, extraBindMounts)
         return fileSystem.resolve(location.rootDir, location.relativePath)
     }
 
@@ -200,6 +302,7 @@ class WorkspaceManager(
         cwd: String = "",
         timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
+        extraBindMounts: List<WorkspaceBindMount> = emptyList(),
         shellCompatibilityMode: Boolean = false,
     ): WorkspaceCommandResult {
         require(command.isNotBlank()) { "Command is required" }
@@ -218,7 +321,7 @@ class WorkspaceManager(
                 workingDir = workingDir,
                 timeoutMillis = timeoutMillis,
                 stdin = stdin,
-                bindMounts = bindMounts,
+                bindMounts = mergeBindMounts(bindMounts, extraBindMounts),
                 shellCompatibilityMode = shellCompatibilityMode,
             )
         )
@@ -260,6 +363,9 @@ class WorkspaceManager(
         /** 由宿主机透传的内核伪文件系统, 只能通过 shell 访问 */
         val KERNEL_FS_MOUNTS = listOf("/dev", "/proc", "/sys")
 
+        /** User mounts may not shadow fixed Rootfs namespaces. */
+        val RESERVED_MOUNT_TARGETS = listOf(ROOTFS_WORKSPACE_DIR) + KERNEL_FS_MOUNTS
+
         private val ROOT_NAME_REGEX = Regex("[A-Za-z0-9._-]+")
     }
 }
@@ -268,4 +374,5 @@ class WorkspaceManager(
 data class RootfsLocation(
     val rootDir: File,
     val relativePath: String,
+    val readOnly: Boolean = false,
 )

@@ -5,9 +5,17 @@ import java.io.File
 data class WorkspaceBindMount(
     val source: File,
     val target: String,
+    val readOnly: Boolean = false,
 ) {
     init {
         require(target.startsWith("/")) { "Bind mount target must be absolute: $target" }
+    }
+
+    fun prootBindSpec(): String = buildString {
+        append(source.absolutePath)
+        append(':')
+        append(target.trimEnd('/'))
+        if (readOnly) append(":ro")
     }
 }
 
@@ -81,7 +89,7 @@ class ProotShellRunner(
         context.bindMounts.forEach { mount ->
             if (mount.source.exists()) {
                 command += "-b"
-                command += "${mount.source.absolutePath}:${mount.target.trimEnd('/')}"
+                command += mount.prootBindSpec()
             }
         }
 

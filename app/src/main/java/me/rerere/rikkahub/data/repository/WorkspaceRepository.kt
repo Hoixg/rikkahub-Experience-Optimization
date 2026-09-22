@@ -16,6 +16,8 @@ import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.WorkspaceMountDir
+import me.rerere.workspace.WorkspaceBindMount
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import java.io.ByteArrayOutputStream
@@ -113,6 +115,66 @@ class WorkspaceRepository(
         )
         return true
     }
+
+    suspend fun validateMountDir(id: String, mountDir: WorkspaceMountDir): String? {
+        val workspace = dao.getById(id) ?: return "workspace_missing"
+        return manager.validateMountDir(workspace.root, mountDir, workspace.mountDirList())
+    }
+
+    suspend fun addMountDir(id: String, mountDir: WorkspaceMountDir): Boolean {
+        val workspace = dao.getById(id) ?: return false
+        val normalized = mountDir.copy(
+            sourcePath = mountDir.sourcePath.trim(),
+            target = mountDir.target.trim().trimEnd('/'),
+        )
+        val error = manager.validateMountDir(workspace.root, normalized, workspace.mountDirList())
+        require(error == null) { "Invalid mount: $error" }
+        dao.upsert(
+            workspace.copy(
+                mountDirs = JsonInstant.encodeToString(workspace.mountDirList() + normalized),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        return true
+    }
+
+    suspend fun removeMountDir(id: String, target: String): Boolean {
+        val workspace = dao.getById(id) ?: return false
+        val targetPath = target.trimEnd('/')
+        dao.upsert(
+            workspace.copy(
+                mountDirs = workspace.mountDirList()
+                    .filterNot { it.target.trimEnd('/') == targetPath }
+                    .let(JsonInstant::encodeToString),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        return true
+    }
+
+    suspend fun setMountDirReadOnly(id: String, target: String, readOnly: Boolean): Boolean {
+        val workspace = dao.getById(id) ?: return false
+        val targetPath = target.trimEnd('/')
+        dao.upsert(
+            workspace.copy(
+                mountDirs = workspace.mountDirList()
+                    .map { if (it.target.trimEnd('/') == targetPath) it.copy(readOnly = readOnly) else it }
+                    .let(JsonInstant::encodeToString),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+        return true
+    }
+
+    private fun WorkspaceEntity.bindMounts(): List<WorkspaceBindMount> =
+        mountDirList().map(manager::bindMountFor)
+
+    fun prootArgs(root: String, cwd: String, mounts: List<WorkspaceMountDir>): List<String> =
+        manager.buildProotArgs(root, cwd, mounts.map(manager::bindMountFor))
+
+    suspend fun getByRoot(root: String): WorkspaceEntity? = dao.getByRoot(root)
+
+    fun globalBindMounts(): List<WorkspaceBindMount> = manager.globalBindMounts
 
     suspend fun installRootfs(
         id: String,
@@ -260,7 +322,7 @@ class WorkspaceRepository(
     ): Long = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
-        manager.rootfsFileSize(workspace.root, path)
+        manager.rootfsFileSize(workspace.root, path, workspace.bindMounts())
     }
 
     /** 按 Rootfs 内绝对路径导出文件内容, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
@@ -271,7 +333,7 @@ class WorkspaceRepository(
     ) = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
-        manager.exportRootfsFile(workspace.root, path, outputStream)
+        manager.exportRootfsFile(workspace.root, path, outputStream, workspace.bindMounts())
     }
 
     suspend fun deleteFile(
@@ -310,7 +372,12 @@ class WorkspaceRepository(
         return runInterruptible(Dispatchers.IO) {
             manager.ensureWorkspace(workspace.root)
             manager.executeCommand(
-                workspace.root, command, cwd, timeoutMillis, stdin,
+                root = workspace.root,
+                command = command,
+                cwd = cwd,
+                timeoutMillis = timeoutMillis,
+                stdin = stdin,
+                extraBindMounts = workspace.bindMounts(),
                 shellCompatibilityMode = workspace.shellCompatibilityMode,
             )
         }

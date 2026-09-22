@@ -8,6 +8,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.InstantSerializer
+import me.rerere.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import java.time.Instant
 import kotlin.uuid.Uuid
@@ -31,6 +32,8 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
+    // Append-only checkpoints; the latest valid checkpoint replaces the request prefix.
+    val compressionSummaries: List<CompressionSummary> = emptyList(),
     @Transient
     val newConversation: Boolean = false
 ) {
@@ -47,6 +50,33 @@ data class Conversation(
         get(): List<UIMessage> {
             return messageNodes.map { node -> node.messages[node.selectIndex] }
         }
+
+    fun activeCompression(): CompressionSummary? {
+        val checkpoint = compressionSummaries.lastOrNull() ?: return null
+        val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
+        return if (messageNodes.any { it.id == boundaryNodeId }) checkpoint else null
+    }
+
+    fun requestWindowMessages(): List<UIMessage> {
+        val checkpoint = activeCompression() ?: return currentMessages
+        val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
+        if (boundaryIndex < 0) return currentMessages
+        val checkpointMessage = UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))),
+            isSynthetic = true,
+        )
+        return listOf(checkpointMessage) + messageNodes
+            .drop(boundaryIndex + 1)
+            .map { it.messages[it.selectIndex] }
+    }
+
+    fun windowNodes(): List<MessageNode> {
+        val checkpoint = activeCompression() ?: return messageNodes
+        val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
+        if (boundaryIndex < 0) return messageNodes
+        return messageNodes.drop(boundaryIndex + 1)
+    }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {
         return messageNodes.firstOrNull { node -> node.messages.contains(message) }
@@ -104,6 +134,16 @@ data class Conversation(
         )
     }
 }
+
+@Serializable
+data class CompressionSummary(
+    val id: Uuid = Uuid.random(),
+    val content: String = "",
+    val messageCount: Int = 0,
+    val boundaryNodeId: Uuid? = null,
+    @Serializable(with = InstantSerializer::class)
+    val createdAt: Instant = Instant.now(),
+)
 
 @Serializable
 data class MessageNode(
