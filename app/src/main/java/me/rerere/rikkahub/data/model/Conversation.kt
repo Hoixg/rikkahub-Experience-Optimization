@@ -34,6 +34,7 @@ data class Conversation(
     val folderId: Uuid? = null,
     // Append-only checkpoints; the latest valid checkpoint replaces the request prefix.
     val compressionSummaries: List<CompressionSummary> = emptyList(),
+    val modelOverrideId: Uuid? = null,
     @Transient
     val newConversation: Boolean = false
 ) {

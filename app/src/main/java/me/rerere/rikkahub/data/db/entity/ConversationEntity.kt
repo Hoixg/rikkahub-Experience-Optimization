@@ -36,4 +36,6 @@ data class ConversationEntity(
     val planModeEnabled: Boolean = false,
     @ColumnInfo("compression_summaries", defaultValue = "[]")
     val compressionSummaries: String = "[]",
+    @ColumnInfo("model_override_id", defaultValue = "")
+    val modelOverrideId: String = "",
 )

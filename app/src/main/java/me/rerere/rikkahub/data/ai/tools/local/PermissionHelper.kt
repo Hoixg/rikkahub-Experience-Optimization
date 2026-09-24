@@ -80,8 +80,20 @@ object PermissionHelper {
             true
         }
 
-    fun allFilesAccessIntent(ctx: Context): Intent =
-        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+    fun allFilesAccessIntent(ctx: Context): Intent {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val appSettings = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                .setData("package:${ctx.packageName}".toUri())
+            if (appSettings.isResolvable(ctx)) return appSettings
+
+            val allFilesSettings = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+            if (allFilesSettings.isResolvable(ctx)) return allFilesSettings
+        }
+
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
             .setData("package:${ctx.packageName}".toUri())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    private fun Intent.isResolvable(ctx: Context): Boolean =
+        resolveActivity(ctx.packageManager) != null
 }

@@ -24,6 +24,12 @@ class StorageVolumeGrantStore(private val context: Context) {
         }
     }
 
+    suspend fun remove(contentUri: String) {
+        store.edit { prefs ->
+            prefs[grantsKey] = encode(decode(prefs[grantsKey].orEmpty()).filterNot { it.contentUri == contentUri })
+        }
+    }
+
     suspend fun reconcile(): List<Grant> {
         val held = context.contentResolver.persistedUriPermissions.map { it.uri.toString() }.toSet()
         val current = loadAll()

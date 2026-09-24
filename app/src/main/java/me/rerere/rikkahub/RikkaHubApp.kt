@@ -32,6 +32,9 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.service.scheduled.SCHEDULED_TASK_PROGRESS_CHANNEL_ID
+import me.rerere.rikkahub.service.scheduled.SCHEDULED_TASK_RESULT_CHANNEL_ID
+import me.rerere.rikkahub.service.scheduled.ScheduledTaskManager
 import me.rerere.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -59,14 +62,14 @@ class RikkaHubApp : Application() {
             Log.e(TAG, "Backup restore rolled back", e)
             Toast.makeText(this, "备份恢复失败，已保留原数据。请重新导入备份。", Toast.LENGTH_LONG).show()
         }
+        this.createNotificationChannel()
         startKoin {
             androidLogger()
             androidContext(this@RikkaHubApp)
             workManagerFactory()
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
-        this.createNotificationChannel()
-
+        get<ScheduledTaskManager>()
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
 
@@ -178,6 +181,19 @@ class RikkaHubApp : Application() {
             .setVibrationEnabled(false)
             .build()
         notificationManager.createNotificationChannel(chatLiveUpdateChannel)
+
+        notificationManager.createNotificationChannel(
+            NotificationChannelCompat.Builder(
+                SCHEDULED_TASK_RESULT_CHANNEL_ID,
+                NotificationManagerCompat.IMPORTANCE_HIGH,
+            ).setName(getString(R.string.scheduled_task_notification_channel)).build()
+        )
+        notificationManager.createNotificationChannel(
+            NotificationChannelCompat.Builder(
+                SCHEDULED_TASK_PROGRESS_CHANNEL_ID,
+                NotificationManagerCompat.IMPORTANCE_LOW,
+            ).setName(getString(R.string.scheduled_task_progress_channel)).build()
+        )
 
     }
 

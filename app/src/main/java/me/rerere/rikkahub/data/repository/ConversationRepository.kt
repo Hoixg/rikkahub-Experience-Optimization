@@ -368,6 +368,7 @@ class ConversationRepository(
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
             compressionSummaries = JsonInstant.encodeToString(conversation.compressionSummaries),
+            modelOverrideId = conversation.modelOverrideId?.toString().orEmpty(),
         )
     }
 
@@ -392,6 +393,7 @@ class ConversationRepository(
             compressionSummaries = runCatching {
                 JsonInstant.decodeFromString<List<CompressionSummary>>(conversationEntity.compressionSummaries)
             }.getOrDefault(emptyList()),
+            modelOverrideId = conversationEntity.modelOverrideId.takeIf(String::isNotEmpty)?.let(Uuid::parse),
         )
     }
 

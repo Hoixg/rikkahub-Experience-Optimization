@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,6 +86,7 @@ import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.data.ai.tools.local.PermissionHelper
 import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
@@ -657,10 +659,13 @@ private fun WorkspaceMountDirCard(
 ) {
     val mounts = workspace?.mountDirList().orEmpty()
     val context = LocalContext.current
-    val allFilesAccessIntent = remember(context) {
-        Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-            .setData(android.net.Uri.parse("package:${context.packageName}"))
+    var permissionRefreshKey by remember { mutableIntStateOf(0) }
+    val hasAllFilesAccess = remember(context, permissionRefreshKey) {
+        PermissionHelper.hasAllFilesAccess(context)
     }
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { permissionRefreshKey++ }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -740,12 +745,31 @@ private fun WorkspaceMountDirCard(
                 }
             }
 
-            TextButton(
-                onClick = {
-                    runCatching { context.startActivity(allFilesAccessIntent) }
-                },
-            ) {
-                Text(stringResource(R.string.workspace_detail_mount_all_files_access))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(
+                        if (hasAllFilesAccess) {
+                            R.string.workspace_detail_mount_all_files_access_granted
+                        } else {
+                            R.string.workspace_detail_mount_all_files_access_missing
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (hasAllFilesAccess) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            allFilesAccessLauncher.launch(PermissionHelper.allFilesAccessIntent(context))
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.workspace_detail_mount_all_files_access))
+                }
             }
 
             Button(

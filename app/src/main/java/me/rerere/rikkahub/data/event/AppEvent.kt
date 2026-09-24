@@ -23,4 +23,6 @@ sealed class AppEvent {
         val senderName: String,
         val contentPreview: String?,
     ) : AppEvent()
+
+    data class ChatTurnFinished(val conversationId: Uuid) : AppEvent()
 }

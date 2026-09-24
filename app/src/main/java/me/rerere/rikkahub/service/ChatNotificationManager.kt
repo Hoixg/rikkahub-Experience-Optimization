@@ -20,6 +20,7 @@ import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.db.dao.ScheduledTaskDao
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.cancelNotification
@@ -37,12 +38,14 @@ private const val LIVE_UPDATE_NOTIFICATION_THROTTLE_MS = 1000L
  */
 class ChatNotificationManager(
     private val context: Application,
-    appScope: AppScope,
+    private val appScope: AppScope,
     eventBus: AppEventBus,
     private val settingsStore: SettingsStore,
+    private val scheduledTaskDao: ScheduledTaskDao,
 ) {
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
+    private val scheduledConversationCache = ConcurrentHashMap<Uuid, Boolean>()
 
     init {
         // ProcessLifecycleOwner 要求在主线程注册观察者
@@ -68,7 +71,8 @@ class ChatNotificationManager(
         }
     }
 
-    private fun handleGenerationUpdate(event: AppEvent.ChatGenerationUpdate) {
+    private suspend fun handleGenerationUpdate(event: AppEvent.ChatGenerationUpdate) {
+        if (isScheduledConversation(event.conversationId)) return
         if (isForeground.value) return
         val displaySetting = settingsStore.settingsFlow.value.displaySetting
         if (!displaySetting.enableNotificationOnMessageGeneration) return
@@ -82,14 +86,24 @@ class ChatNotificationManager(
         sendLiveUpdateNotification(event.conversationId, event.lastMessage, event.senderName)
     }
 
-    private fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
+    private suspend fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
         cancelLiveUpdateNotification(event.conversationId)
 
+        val scheduled = isScheduledConversation(event.conversationId)
+        scheduledConversationCache.remove(event.conversationId)
         val contentPreview = event.contentPreview ?: return
+        if (scheduled) return
         if (isForeground.value) return
         if (!settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration) return
         sendGenerationDoneNotification(event.conversationId, event.senderName, contentPreview)
     }
+
+    private suspend fun isScheduledConversation(conversationId: Uuid): Boolean =
+        scheduledConversationCache[conversationId] ?: run {
+            val scheduled = scheduledTaskDao.getRunByConversation(conversationId.toString()) != null
+            scheduledConversationCache[conversationId] = scheduled
+            scheduled
+        }
 
     private fun sendGenerationDoneNotification(
         conversationId: Uuid,

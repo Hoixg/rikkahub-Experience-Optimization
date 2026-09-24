@@ -78,6 +78,9 @@ fun AssistantLocalToolPage(id: String) {
             onUpdate = { vm.update(it) },
             onNavigateToTermuxSettings = {
                 navController.navigate(Screen.SettingTermux)
+            },
+            onNavigateToGrantedFolders = {
+                navController.navigate(Screen.GrantedFolders)
             }
         )
     }
@@ -88,7 +91,8 @@ private fun AssistantLocalToolContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
     onUpdate: (Assistant) -> Unit,
-    onNavigateToTermuxSettings: () -> Unit
+    onNavigateToTermuxSettings: () -> Unit,
+    onNavigateToGrantedFolders: () -> Unit,
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -259,6 +263,11 @@ private fun AssistantLocalToolContent(
                 headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_external_storage_title)) },
                 supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_external_storage_desc)) },
                 trailingContent = { Switch(checked = assistant.localTools.contains(LocalToolOption.ExternalStorage), onCheckedChange = { toggleLocalTool(LocalToolOption.ExternalStorage, it) }) }
+            )
+            item(
+                onClick = onNavigateToGrantedFolders,
+                headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_granted_folders_title)) },
+                supportingContent = { Text(stringResource(R.string.assistant_page_local_tools_granted_folders_desc)) },
             )
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_local_tools_archive_title)) },

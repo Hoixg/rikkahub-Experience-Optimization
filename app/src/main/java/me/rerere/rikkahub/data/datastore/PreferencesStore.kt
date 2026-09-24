@@ -182,8 +182,9 @@ class SettingsStore(
                 preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
                 preferences[OCR_MODEL] = settings.ocrModelId.toString()
                 preferences[OCR_PROMPT] = settings.ocrPrompt
-                preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
+                preferences.remove(COMPRESS_MODEL)
                 preferences[COMPRESS_PROMPT] = settings.compressPrompt
+                preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
 
                 preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -248,9 +249,8 @@ class SettingsStore(
                 suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
                 ocrModelId = preferences[OCR_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
-                compressModelId = preferences[COMPRESS_MODEL]?.let { Uuid.parse(it) } ?: DEFAULT_AUTO_MODEL_ID,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
-                enableAutoCompaction = preferences[ENABLE_AUTO_COMPACTION] == true,
+                enableAutoCompaction = preferences[ENABLE_AUTO_COMPACTION] ?: true,
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
@@ -439,7 +439,7 @@ class SettingsStore(
             preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
             preferences[OCR_MODEL] = settings.ocrModelId.toString()
             preferences[OCR_PROMPT] = settings.ocrPrompt
-            preferences[COMPRESS_MODEL] = settings.compressModelId.toString()
+            preferences.remove(COMPRESS_MODEL)
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
             preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
 
@@ -588,10 +588,9 @@ data class Settings(
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
-    val compressModelId: Uuid = Uuid.random(),
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
-    /** 全局自动压缩开关，默认关闭；手动压缩不受影响。 */
-    val enableAutoCompaction: Boolean = false,
+    /** 全局自动压缩开关，新安装默认开启。 */
+    val enableAutoCompaction: Boolean = true,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = emptyList(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,

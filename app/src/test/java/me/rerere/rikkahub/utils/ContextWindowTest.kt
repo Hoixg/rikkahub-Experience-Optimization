@@ -6,10 +6,12 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.provider.Model
 import me.rerere.rikkahub.data.ai.prompts.isCompactionCheckpoint
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,6 +54,20 @@ class ContextWindowTest {
         assertEquals(8_192, Model(modelId = modelId, contextLength = 8_192).effectiveContextLength())
         assertEquals(262_144, Model(modelId = modelId).effectiveContextLength())
         assertEquals(262_144, null.effectiveContextLength())
+    }
+
+    @Test
+    fun autoCompactionOnlyRunsWhenEnabledAndAtThreshold() {
+        assertFalse(shouldAutoCompact(enabled = false, usedTokens = 100, windowTokens = 100))
+        assertFalse(shouldAutoCompact(enabled = true, usedTokens = 79, windowTokens = 100))
+        assertTrue(shouldAutoCompact(enabled = true, usedTokens = 80, windowTokens = 100))
+        assertFalse(shouldAutoCompact(enabled = true, usedTokens = 1, windowTokens = 0))
+    }
+
+    @Test
+    fun autoCompactionIsEnabledByDefaultButCanBeDisabled() {
+        assertTrue(Settings().enableAutoCompaction)
+        assertFalse(Settings(enableAutoCompaction = false).enableAutoCompaction)
     }
 
     @Test

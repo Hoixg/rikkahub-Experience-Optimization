@@ -1,14 +1,11 @@
 package me.rerere.rikkahub.ui.components.ai
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.content.MediaType
@@ -62,8 +59,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
@@ -72,7 +67,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,6 +103,7 @@ import me.rerere.rikkahub.data.datastore.BackgroundEffectType
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.files.FilesManager
@@ -129,11 +124,8 @@ import me.rerere.rikkahub.ui.context.LocalASRState
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
-import me.rerere.rikkahub.utils.AUTO_COMPACT_THRESHOLD_RATIO
-import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
 import me.rerere.rikkahub.ui.pages.chat.VoicePhase
 import me.rerere.rikkahub.ui.pages.chat.VoiceSessionState
@@ -142,6 +134,7 @@ import kotlin.uuid.Uuid
 @Composable
 fun ChatInput(
     state: ChatInputState,
+    modelOverrideId: Uuid? = null,
     loading: Boolean,
     settings: Settings,
     hazeState: HazeState,
@@ -155,7 +148,6 @@ fun ChatInput(
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
     onMoreClick: () -> Unit,
-    contextUsage: ContextUsage? = null,
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
@@ -170,6 +162,7 @@ fun ChatInput(
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
+    val displayedModelId = modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
     val hazeTintColor = MaterialTheme.colorScheme.surfaceContainerLow
     val inputHazeStyle = HazeBlurStyle.Material3 {
         blurRadius(12.dp)
@@ -186,7 +179,7 @@ fun ChatInput(
         bottomStart = themeShape.bottomStart,
     )
     val modelListState = rememberModelListState(
-        modelId = assistant.chatModelId ?: settings.chatModelId,
+        modelId = displayedModelId,
         providers = settings.providers,
         type = ModelType.CHAT,
     )
@@ -323,19 +316,24 @@ fun ChatInput(
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             // Model Picker
-                            ModelSelector(
-                                modelId = assistant.chatModelId ?: settings.chatModelId,
-                                providers = settings.providers,
-                                type = ModelType.CHAT,
-                                onlyIcon = true,
-                                modifier = Modifier,
-                                onSelect = onUpdateChatModel,
-                            )
+                            if (modelOverrideId == null) {
+                                ModelSelector(
+                                    modelId = displayedModelId,
+                                    providers = settings.providers,
+                                    type = ModelType.CHAT,
+                                    onlyIcon = true,
+                                    modifier = Modifier,
+                                    onSelect = onUpdateChatModel,
+                                )
+                            } else {
+                                Text(settings.findModelById(modelOverrideId)?.displayName
+                                    ?: stringResource(R.string.scheduled_task_model_unavailable))
+                            }
 
                             // Search
                             val enableSearchMsg = stringResource(R.string.web_search_enabled)
                             val disableSearchMsg = stringResource(R.string.web_search_disabled)
-                            val chatModel = settings.getCurrentChatModel()
+                            val chatModel = settings.findModelById(displayedModelId)
                             SearchPickerButton(
                                 enableSearch = enableSearch,
                                 settings = settings,
@@ -357,8 +355,8 @@ fun ChatInput(
                             )
 
                             // Reasoning
-                            val model = settings.getCurrentChatModel()
-                            if (model?.abilities?.contains(ModelAbility.REASONING) == true) {
+                            val model = chatModel
+                            if (modelOverrideId == null && model?.abilities?.contains(ModelAbility.REASONING) == true) {
                                 ReasoningButton(
                                     reasoningLevel = assistant.reasoningLevel,
                                     onUpdateReasoningLevel = {
@@ -370,13 +368,6 @@ fun ChatInput(
 
                             if (workspace != null) {
                                 WorkspaceButton(onClick = onWorkspaceClick)
-                            }
-
-                            contextUsage?.let { usage ->
-                                ContextUsageBarButton(
-                                    usedTokens = usage.usedTokens,
-                                    windowTokens = usage.windowTokens,
-                                )
                             }
 
                         }
@@ -438,100 +429,8 @@ fun ChatInput(
         }
     }
 
-    ModelListSheet(
-        state = modelListState,
-        onSelect = onUpdateChatModel,
-    )
-}
-
-data class ContextUsage(
-    val usedTokens: Int,
-    val windowTokens: Int,
-)
-
-@Composable
-private fun ContextUsageBarButton(
-    usedTokens: Int,
-    windowTokens: Int,
-) {
-    var showPopup by remember { mutableStateOf(false) }
-    val fraction = if (windowTokens > 0) {
-        (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    val isWarning = windowTokens > 0 && fraction >= AUTO_COMPACT_THRESHOLD_RATIO
-    val barColor = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-    val textColor = if (isWarning) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val percent = (fraction * 100f).roundToInt()
-    val animatedFraction by animateFloatAsState(
-        targetValue = fraction,
-        animationSpec = tween(450),
-        label = "contextUsageFraction",
-    )
-
-    Box(
-        modifier = Modifier
-            .height(30.dp)
-            .clip(CircleShape)
-            .clickable { showPopup = true }
-            .padding(horizontal = 6.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Canvas(modifier = Modifier.size(width = 34.dp, height = 5.dp)) {
-                val radius = size.height / 2f
-                drawRoundRect(
-                    color = trackColor,
-                    cornerRadius = CornerRadius(radius),
-                )
-                if (animatedFraction > 0f) {
-                    drawRoundRect(
-                        color = barColor,
-                        size = Size(
-                            width = (size.width * animatedFraction).coerceAtLeast(size.height),
-                            height = size.height,
-                        ),
-                        cornerRadius = CornerRadius(radius),
-                    )
-                }
-            }
-            Text(
-                text = "$percent%",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.5.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFeatureSettings = "tnum",
-                ),
-                color = textColor,
-                maxLines = 1,
-                modifier = Modifier.widthIn(min = 28.dp),
-            )
-        }
-    }
-
-    DropdownMenu(
-        expanded = showPopup,
-        onDismissRequest = { showPopup = false },
-    ) {
-        Text(
-            text = stringResource(
-                R.string.chat_context_usage_tooltip,
-                formatContextLength(usedTokens),
-                formatContextLength(windowTokens),
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-        )
+    if (modelOverrideId == null) {
+        ModelListSheet(state = modelListState, onSelect = onUpdateChatModel)
     }
 }
 

@@ -256,16 +256,6 @@
   <string name="chat_page_cancel">取消</string>
   <string name="chat_page_check_fast_model_settings">檢查快速模型設定</string>
   <string name="chat_page_clear_all_errors">清除全部</string>
-  <string name="chat_page_compress_additional_prompt">額外指示（選填）</string>
-  <string name="chat_page_compress_additional_prompt_hint">指定要保留或聚焦的內容</string>
-  <string name="chat_page_compress_context">壓縮歷史</string>
-  <string name="chat_page_compress_context_desc">將對話壓縮成摘要以節省 token</string>
-  <string name="chat_page_compress_context_title">壓縮對話紀錄</string>
-  <string name="chat_page_compress_keep_recent">保留最近訊息</string>
-  <string name="chat_page_compress_not_enough_messages">訊息不足，無法壓縮。請減少要保留的訊息數量，或新增更多訊息。</string>
-  <string name="chat_page_compress_target_tokens">目標 Token 大小</string>
-  <string name="chat_page_compress_warning">⚠️ 壓縮上下文將重設目前對話中的所有訊息</string>
-  <string name="chat_page_compressing">正在壓縮...</string>
   <string name="chat_page_conversation_system_prompt">對話系統提示</string>
   <string name="chat_page_conversation_system_prompt_clear">清除</string>
   <string name="chat_page_conversation_system_prompt_hint">覆蓋此對話的助理系統提示</string>
@@ -325,7 +315,6 @@
   <string name="editing">編輯中</string>
   <string name="emoji_picker_search_placeholder">搜尋表情符號...</string>
   <string name="emoji_picker_select_skin_tone">選擇膚色</string>
-  <string name="error_title_compress_conversation">對話壓縮失敗</string>
   <string name="error_title_generate_title">自動產生標題失敗</string>
   <string name="error_title_generation">訊息產生失敗</string>
   <string name="error_title_operation">操作失敗</string>
@@ -735,8 +724,6 @@
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">聊天模型</string>
   <string name="setting_model_page_chat_model_desc">全域預設聊天模型</string>
-  <string name="setting_model_page_compress_model">壓縮模型</string>
-  <string name="setting_model_page_compress_model_desc">用於壓縮對話歷程的模型</string>
   <string name="setting_model_page_compress_prompt_vars">變數：{content}、{target_tokens}、{additional_context}</string>
   <string name="setting_model_page_ocr_model">OCR 模型</string>
   <string name="setting_model_page_ocr_model_desc">用於圖片光學字元辨識的模型</string>

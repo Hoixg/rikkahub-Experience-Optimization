@@ -6,6 +6,10 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.getAssistantById
+import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import kotlinx.datetime.toKotlinLocalDateTime
 
 fun parseContextLengthInput(text: String): Int? {
@@ -37,7 +41,16 @@ fun Model?.effectiveContextLength(): Int =
         ?: this?.modelId
             ?.let { ModelRegistry.MODEL_CONTEXT_LENGTH.getData(it) }
             ?.takeIf { value -> value > 0 }
-        ?: DEFAULT_CONTEXT_LENGTH
+            ?: DEFAULT_CONTEXT_LENGTH
+
+fun Settings.getConversationChatModel(conversation: Conversation): Model? {
+    conversation.modelOverrideId?.let { return findModelById(it) }
+    val assistant = getAssistantById(conversation.assistantId) ?: getCurrentAssistant()
+    return findModelById(assistant.chatModelId) ?: findModelById(chatModelId)
+}
+
+fun shouldAutoCompact(enabled: Boolean, usedTokens: Int, windowTokens: Int): Boolean =
+    enabled && windowTokens > 0 && usedTokens >= (windowTokens * AUTO_COMPACT_THRESHOLD_RATIO).toInt()
 
 private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
     atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()

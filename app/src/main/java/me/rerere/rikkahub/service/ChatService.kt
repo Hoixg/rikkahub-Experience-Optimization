@@ -30,6 +30,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.ToolApprovalState
@@ -61,6 +62,7 @@ import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.db.dao.ScheduledTaskDao
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -81,10 +83,12 @@ import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
-import me.rerere.rikkahub.utils.AUTO_COMPACT_THRESHOLD_RATIO
+import me.rerere.rikkahub.utils.getConversationChatModel
+import me.rerere.rikkahub.utils.shouldAutoCompact
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.effectiveContextLength
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
@@ -104,7 +108,6 @@ internal fun backgroundTextGenerationParams(
     sessionId = conversationId.toString(),
 )
 
-private const val AUTO_COMPRESS_THRESHOLD_RATIO = AUTO_COMPACT_THRESHOLD_RATIO
 private const val AUTO_COMPRESS_RETAIN_RATIO = 0.16f
 private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
 private const val MAX_MESSAGES_PER_CHUNK = 256
@@ -125,6 +128,7 @@ internal fun createForkConversation(
     lorebookIds = source.lorebookIds,
     workspaceCwd = source.workspaceCwd,
     folderId = source.folderId,
+    modelOverrideId = source.modelOverrideId,
 )
 
 data class ChatError(
@@ -134,6 +138,12 @@ data class ChatError(
     val conversationId: Uuid? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val solution: ChatErrorSolution? = null,
+)
+
+data class ScheduledConversationOutcome(
+    val awaitingApproval: Boolean,
+    val answer: String?,
+    val error: String?,
 )
 
 enum class ChatErrorSolution {
@@ -174,9 +184,11 @@ class ChatService(
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
+    private val scheduledTaskDao: ScheduledTaskDao,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
+    private val workerOwnedGenerations = ConcurrentHashMap.newKeySet<Uuid>()
 
     private val sessionManager = ConversationSessionManager(
         scope = appScope,
@@ -224,6 +236,7 @@ class ChatService(
             session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
         }
         appScope.launch { dispatchNextQueuedMessage(session.id) }
+        appScope.launch { appEventBus.emit(AppEvent.ChatTurnFinished(session.id)) }
     }
 
     // 保留 UI/Web 的入口，生命周期和状态查询统一交给 SessionManager。
@@ -251,7 +264,9 @@ class ChatService(
         keepAliveInBackground: Boolean = true,
         block: suspend () -> Unit,
     ): Job {
-        if (!keepAliveInBackground) return appScope.launch(start = CoroutineStart.LAZY) { block() }
+        if (!keepAliveInBackground || conversationId in workerOwnedGenerations) {
+            return appScope.launch(start = CoroutineStart.LAZY) { block() }
+        }
 
         return appScope.launch(start = CoroutineStart.LAZY) {
             val generationId = Uuid.random()
@@ -289,6 +304,61 @@ class ChatService(
             settingsStore.updateAssistant(session.state.value.assistantId)
         }
     }
+
+    /** A scheduled run owns the foreground worker and does not change the selected assistant. */
+    suspend fun runScheduledPrompt(
+        conversationId: Uuid,
+        assistantId: Uuid,
+        modelId: Uuid?,
+        title: String,
+        prompt: String,
+    ) {
+        val settings = settingsStore.settingsFlowRaw.first()
+        val assistant = settings.getAssistantById(assistantId)
+            ?: error("The selected assistant no longer exists")
+        check(settings.findModelById(modelId ?: assistant.chatModelId ?: settings.chatModelId)
+            ?.type == ModelType.CHAT) {
+            "The selected task model is unavailable"
+        }
+        val session = sessionManager.getOrCreate(conversationId)
+        session.initialize {
+            Conversation.ofId(conversationId, assistantId = assistantId, newConversation = true)
+                .updateCurrentMessages(assistant.presetMessages)
+                .copy(title = title, modelOverrideId = modelId)
+        }
+        saveConversation(conversationId, session.state.value)
+        workerOwnedGenerations.add(conversationId)
+        try {
+            sendMessage(conversationId, listOf(UIMessagePart.Text(prompt)))
+            val job = session.getJob() ?: error("The scheduled message did not start")
+            job.join()
+        } finally {
+            workerOwnedGenerations.remove(conversationId)
+        }
+    }
+
+    suspend fun scheduledConversationOutcome(conversationId: Uuid): ScheduledConversationOutcome {
+        val conversation = conversationRepo.getConversationById(conversationId)
+            ?: return ScheduledConversationOutcome(false, null, "Conversation was not saved")
+        val messages = conversation.currentMessages
+        val lastUserIndex = messages.indexOfLast { it.role == MessageRole.USER }
+        return ScheduledConversationOutcome(
+            awaitingApproval = messages.any { message ->
+                message.parts.any { it is UIMessagePart.Tool && it.isPending }
+            },
+            answer = if (lastUserIndex >= 0) {
+                messages.drop(lastUserIndex + 1).lastOrNull { it.role == MessageRole.ASSISTANT }
+                    ?.toText()?.trim()
+            } else null,
+            error = errors.value.lastOrNull {
+                it.conversationId == conversationId &&
+                    it.title != context.getString(R.string.error_title_tool_unavailable)
+            }?.error?.message,
+        )
+    }
+
+    suspend fun hasSavedConversation(conversationId: Uuid): Boolean =
+        conversationRepo.existsConversationById(conversationId)
 
     // ---- 发送消息 ----
 
@@ -400,14 +470,28 @@ class ChatService(
                 finishInterruptedPendingTools(conversationId)
 
                 val currentConversation = session.state.value
-                val settings = settingsStore.settingsFlow.first()
+                val settings = if (workerOwnedGenerations.contains(conversationId)) {
+                    settingsStore.settingsFlowRaw.first()
+                } else {
+                    settingsStore.settingsFlow.first()
+                }
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
-                    ?: settings.getCurrentAssistant()
+                    ?: if (workerOwnedGenerations.contains(conversationId)) {
+                        throw IllegalStateException("The selected assistant no longer exists")
+                    } else {
+                        settings.getCurrentAssistant()
+                    }
                 val processedContent = preprocessUserInputParts(content, assistant)
 
+                // 对齐 YuiHub：普通发送前压缩旧上下文，新输入始终保留为近期消息。
+                if (answer && settings.enableAutoCompaction) {
+                    autoCompressIfNeeded(conversationId, currentConversation)
+                }
+
                 // 添加消息到列表
-                val newConversation = currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes + UIMessage(
+                val conversationBeforeInput = session.state.value
+                val newConversation = conversationBeforeInput.copy(
+                    messageNodes = conversationBeforeInput.messageNodes + UIMessage(
                         role = MessageRole.USER,
                         parts = processedContent,
                     ).toMessageNode(),
@@ -603,11 +687,19 @@ class ChatService(
         conversationId: Uuid,
         messageRange: ClosedRange<Int>? = null
     ) {
-        val settings = settingsStore.settingsFlow.first()
         val initialConversation = getConversationFlow(conversationId).value
+        val scheduledRun = scheduledTaskDao.getRunByConversation(conversationId.toString())
+        val settings = if (scheduledRun != null) settingsStore.settingsFlowRaw.first()
+            else settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(initialConversation.assistantId)
-            ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
+            ?: if (scheduledRun != null) {
+                throw IllegalStateException("The selected assistant no longer exists")
+            } else {
+                settings.getCurrentAssistant()
+            }
+        val model = settings.findModelById(
+            initialConversation.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
+        )
             ?: throw IllegalStateException("No chat model selected")
 
         val senderName = if (assistant.useAssistantAvatar) {
@@ -637,9 +729,6 @@ class ChatService(
             checkInvalidMessages(conversationId)
             val conversation = getConversationFlow(conversationId).value
 
-            if (settings.enableAutoCompaction && messageRange == null) {
-                autoCompressIfNeeded(conversationId, conversation)
-            }
             val requestConversation = getConversationFlow(conversationId).value
 
             val tools = try {
@@ -738,6 +827,8 @@ class ChatService(
             Logging.log(TAG, it.stackTraceToString())
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
+
+            if (scheduledTaskDao.getRunByConversation(conversationId.toString()) != null) return@onSuccess
 
             sessionManager.launchWithSession(conversationId) {
                 generateTitle(conversationId, finalConversation)
@@ -932,79 +1023,30 @@ class ChatService(
         }
     }
 
-    // ---- 压缩对话历史 ----
-
-    suspend fun compressConversation(
-        conversationId: Uuid,
-        conversation: Conversation,
-        additionalPrompt: String,
-        targetTokens: Int,
-        keepRecentMessages: Int = 32
-    ): Result<Unit> {
-        val settings = settingsStore.settingsFlow.first()
-        val model = settings.findModelById(settings.compressModelId)
-            ?: settings.getCurrentChatModel()
-            ?: return Result.failure(IllegalStateException("No model available for compression"))
-        val windowTokens = model.effectiveContextLength()
-        val nodes = conversation.windowNodes()
-        val keepCount = if (keepRecentMessages > 0) {
-            keepRecentMessages
-        } else {
-            keepNodeCountByTokenBudget(nodes, (windowTokens * AUTO_COMPRESS_RETAIN_RATIO).toInt())
-        }
-        val nodesToCompress = nodes.dropLast(keepCount)
-        val nodesToKeep = nodes.takeLast(keepCount)
-        if (nodesToCompress.isEmpty()) {
-            return Result.failure(IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages)))
-        }
-
-        return runCatching {
-            val summary = compressNodesToSummary(
-                conversationId = conversationId,
-                conversation = conversation,
-                nodesToCompress = nodesToCompress,
-                settings = settings,
-                model = model,
-                targetTokens = targetTokens,
-                userInstructions = additionalPrompt,
-            ).orEmpty()
-            require(summary.isNotBlank()) { "Failed to generate compressed summary" }
-
-            val boundaryNodeId = nodesToCompress.last().id
-            val checkpoint = CompressionSummary(
-                content = summary,
-                messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
-                boundaryNodeId = boundaryNodeId,
-            )
-            saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
-        }
-    }
-
     private suspend fun autoCompressIfNeeded(
         conversationId: Uuid,
         conversation: Conversation,
     ) {
         if (conversation.windowNodes().size <= 2) return
         val settings = settingsStore.settingsFlow.first()
-        val assistant = settings.getAssistantById(conversation.assistantId)
-            ?: settings.getCurrentAssistant()
-        val model = settings.findModelById(assistant.chatModelId ?: settings.chatModelId) ?: return
+        if (!settings.enableAutoCompaction) return
+        val model = settings.getConversationChatModel(conversation) ?: return
         val windowTokens = model.effectiveContextLength()
         val usedTokens = estimateConversationTokens(conversation, model)
-        if (usedTokens < (windowTokens * AUTO_COMPRESS_THRESHOLD_RATIO).toInt()) return
+        if (!shouldAutoCompact(settings.enableAutoCompaction, usedTokens, windowTokens)) return
+
+        val nodesToCompress = autoCompressNodes(conversation, windowTokens)
+        if (nodesToCompress.isEmpty()) return
 
         compressNodesToSummary(
             conversationId = conversationId,
             conversation = conversation,
-            nodesToCompress = autoCompressNodes(conversation, windowTokens),
+            nodesToCompress = nodesToCompress,
             settings = settings,
             model = model,
-            targetTokens = AUTO_COMPRESS_TARGET_TOKENS,
-            userInstructions = "",
         )?.let { summary ->
             if (summary.isNotBlank()) {
                 val nodes = conversation.windowNodes()
-                val nodesToCompress = autoCompressNodes(conversation, windowTokens)
                 val checkpoint = CompressionSummary(
                     content = summary,
                     messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
@@ -1061,8 +1103,6 @@ class ChatService(
         nodesToCompress: List<MessageNode>,
         settings: Settings,
         model: Model,
-        targetTokens: Int,
-        userInstructions: String,
     ): String? {
         if (nodesToCompress.isEmpty()) return null
         return runCatching {
@@ -1070,17 +1110,9 @@ class ChatService(
                 ?: error("Provider not found")
             val providerHandler = providerManager.getProviderByType(provider)
             val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
-            val additionalContext = buildString {
-                if (priorSummary.isNotBlank()) {
-                    append("PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):")
-                    appendLine(priorSummary)
-                }
-                if (userInstructions.isNotBlank()) {
-                    if (isNotEmpty()) appendLine()
-                    append("Additional instructions from user: ")
-                    append(userInstructions)
-                }
-            }
+            val additionalContext = if (priorSummary.isNotBlank()) {
+                "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
+            } else ""
 
             val summaries = coroutineScope {
                 splitNodes(nodesToCompress).map { nodes ->
@@ -1088,7 +1120,7 @@ class ChatService(
                         val content = nodes.joinToString("\n\n") { it.currentMessage.summaryAsText(maxLength = 2_000) }
                         val prompt = settings.compressPrompt.applyPlaceholders(
                             "content" to content,
-                            "target_tokens" to targetTokens.toString(),
+                            "target_tokens" to AUTO_COMPRESS_TARGET_TOKENS.toString(),
                             "additional_context" to additionalContext,
                             "locale" to Locale.getDefault().displayName,
                         )

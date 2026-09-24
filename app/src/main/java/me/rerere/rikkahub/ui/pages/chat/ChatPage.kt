@@ -2,14 +2,21 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -37,7 +44,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -65,6 +78,7 @@ import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import me.rerere.rikkahub.data.files.FilesManager
@@ -74,7 +88,6 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.ai.ChatAttachmentPickerActions
 import me.rerere.rikkahub.ui.components.ai.ChatInput
-import me.rerere.rikkahub.ui.components.ai.ContextUsage
 import me.rerere.rikkahub.ui.components.ai.FilesPicker
 import me.rerere.rikkahub.ui.components.ai.SearchMode
 import me.rerere.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
@@ -90,12 +103,16 @@ import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.estimateWindowTokens
+import me.rerere.rikkahub.utils.getConversationChatModel
+import me.rerere.rikkahub.utils.AUTO_COMPACT_THRESHOLD_RATIO
+import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
+import kotlin.math.roundToInt
 
 @Composable
 fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
@@ -300,13 +317,27 @@ private fun ChatPageContent(
         setting = setting,
         onAttachmentAdded = { showFilesSheet = false },
     )
+    val conversationChatModel = remember(
+        setting.assistants,
+        setting.providers,
+        conversation.assistantId,
+        conversation.modelOverrideId,
+        setting.assistantId,
+        setting.chatModelId,
+    ) {
+        setting.getConversationChatModel(conversation)
+    }
     val allowAudioVideoAttachments =
-        setting.getCurrentChatModel()?.findProvider(setting.providers) is ProviderSetting.Google
-    val contextUsage = remember(conversation, currentChatModel) {
-        ContextUsage(
-            usedTokens = conversation.estimateWindowTokens(currentChatModel),
-            windowTokens = currentChatModel.effectiveContextLength(),
-        )
+        conversationChatModel?.findProvider(setting.providers) is ProviderSetting.Google
+    val contextUsage = remember(conversation, conversationChatModel, setting.enableAutoCompaction) {
+        if (setting.enableAutoCompaction && conversationChatModel != null) {
+            ContextUsage(
+                usedTokens = conversation.estimateWindowTokens(conversationChatModel),
+                windowTokens = conversationChatModel.effectiveContextLength(),
+            )
+        } else {
+            null
+        }
     }
 
     val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
@@ -333,6 +364,7 @@ private fun ChatPageContent(
                 TopBar(
                     settings = setting,
                     conversation = conversation,
+                    contextUsage = contextUsage,
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
@@ -351,6 +383,7 @@ private fun ChatPageContent(
                 val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()
                 val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
                 ChatInput(
+                    modelOverrideId = conversation.modelOverrideId,
                     onStartVoiceMode = onStartVoiceMode,
                     voiceState = voiceState,
                     onStopVoiceMode = vm.voiceSession::stop,
@@ -468,7 +501,6 @@ private fun ChatPageContent(
                     onMoreClick = {
                         showFilesSheet = true
                     },
-                    contextUsage = contextUsage,
                 )
             },
             containerColor = Color.Transparent,
@@ -595,11 +627,9 @@ private fun ChatFilesPickerSheet(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var showInjectionSheet by remember { mutableStateOf(false) }
-    var showCompressDialog by remember { mutableStateOf(false) }
 
     fun dismissAll() {
         showInjectionSheet = false
-        showCompressDialog = false
         onDismiss()
     }
 
@@ -616,9 +646,6 @@ private fun ChatFilesPickerSheet(
             state = inputState,
             assistant = assistant,
             mcpManager = vm.mcpManager,
-            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
-                vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
-            },
             onUpdateAssistant = {
                 vm.updateSettings(
                     setting.copy(
@@ -638,8 +665,6 @@ private fun ChatFilesPickerSheet(
             },
             showInjectionSheet = showInjectionSheet,
             onShowInjectionSheetChange = { showInjectionSheet = it },
-            showCompressDialog = showCompressDialog,
-            onShowCompressDialogChange = { showCompressDialog = it },
             onDismiss = { dismissAll() },
             onTakePic = attachmentPickerActions.onTakePicture,
             onPickImage = attachmentPickerActions.onPickImage,
@@ -665,6 +690,7 @@ private fun ChatFilesPickerSheet(
 private fun TopBar(
     settings: Settings,
     conversation: Conversation,
+    contextUsage: ContextUsage?,
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
@@ -704,8 +730,9 @@ private fun TopBar(
                 color = Color.Transparent,
             ) {
                 Column {
-                    val assistant = settings.getCurrentAssistant()
-                    val model = settings.getCurrentChatModel()
+                    val assistant = settings.getAssistantById(conversation.assistantId)
+                        ?: settings.getCurrentAssistant()
+                    val model = settings.getConversationChatModel(conversation)
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
                     Text(
                         text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
@@ -728,6 +755,13 @@ private fun TopBar(
             }
         },
         actions = {
+            contextUsage?.let { usage ->
+                ContextUsageRingButton(
+                    usedTokens = usage.usedTokens,
+                    windowTokens = usage.windowTokens,
+                )
+            }
+
             IconButton(
                 onClick = {
                     onClickMenu()
@@ -779,6 +813,88 @@ private fun TopBar(
                     Text(stringResource(R.string.chat_page_cancel))
                 }
             }
+        )
+    }
+}
+
+private data class ContextUsage(
+    val usedTokens: Int,
+    val windowTokens: Int,
+)
+
+@Composable
+private fun ContextUsageRingButton(
+    usedTokens: Int,
+    windowTokens: Int,
+) {
+    var showPopup by remember { mutableStateOf(false) }
+    val fraction = if (windowTokens > 0) {
+        (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val isWarning = windowTokens > 0 && fraction >= AUTO_COMPACT_THRESHOLD_RATIO
+    val ringColor = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.outlineVariant
+    val percent = (fraction * 100f).roundToInt()
+
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable { showPopup = true },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(25.dp)) {
+            val stroke = 2.5.dp.toPx()
+            val inset = stroke / 2
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            val topLeft = Offset(inset, inset)
+            drawArc(
+                color = trackColor,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = stroke, cap = StrokeCap.Round),
+            )
+            if (fraction > 0f) {
+                drawArc(
+                    color = ringColor,
+                    startAngle = -90f,
+                    sweepAngle = 360f * fraction,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+        }
+        Text(
+            text = percent.toString(),
+            fontSize = when {
+                percent >= 100 -> 7.sp
+                percent >= 10 -> 8.sp
+                else -> 9.sp
+            },
+            lineHeight = 9.sp,
+            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    DropdownMenu(
+        expanded = showPopup,
+        onDismissRequest = { showPopup = false },
+    ) {
+        Text(
+            text = stringResource(
+                R.string.chat_context_usage_tooltip,
+                formatContextLength(usedTokens),
+                formatContextLength(windowTokens),
+            ),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
         )
     }
 }
