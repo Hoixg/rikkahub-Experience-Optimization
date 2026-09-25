@@ -97,6 +97,7 @@ class GenerationLoop(
         conversationModeInjectionIds: Set<Uuid> = emptySet(),
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
+        shouldYieldAfterToolResults: () -> Boolean = { false },
     ): Flow<GenerationChunk> = flow {
         val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -412,6 +413,13 @@ class GenerationLoop(
                     )
                 )
             )
+
+            // The downstream collector has applied the tool results to conversation state by the time emit returns.
+            // A prioritized queued message can now start without waiting for another model request.
+            if (shouldYieldAfterToolResults()) {
+                Log.i(TAG, "generateText: yielding after tool results for a prioritized message")
+                break
+            }
 
             if (remainingTurnBudgetMs(
                     startedAtMs = turnStartedAtMs,

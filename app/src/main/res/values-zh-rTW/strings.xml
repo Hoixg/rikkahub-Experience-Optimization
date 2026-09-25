@@ -1076,6 +1076,7 @@
   <string name="setting_model_page_prompt_suggestion">聊天回覆建議</string>
   <string name="setting_model_page_prompt_ocr">OCR 辨識</string>
   <string name="setting_model_page_prompt_compress">上下文壓縮</string>
+  <string name="chat_page_compacting_context">正在自動壓縮上下文…</string>
   <string name="setting_provider_page_model_api_key">指定 API Key</string>
   <string name="setting_provider_page_model_api_key_desc">選擇此模型使用所屬提供商已儲存的 API Key。</string>
   <string name="setting_provider_page_model_api_key_inherit">跟隨提供商目前 Key</string>
@@ -1229,11 +1230,12 @@
   <string name="permission_calendar_read">讀取日曆</string>
   <string name="permission_calendar_read_desc">讀取日曆事件，以回答您與行程相關的問題</string>
   <string name="permission_calendar_write">寫入日曆</string>
-  <string name="permission_calendar_write_desc">代您建立日曆活動</string>
+  <string name="permission_calendar_write_desc">代您建立或刪除日曆活動</string>
   <string name="assistant_page_local_tools_calendar_title">日曆</string>
-  <string name="assistant_page_local_tools_calendar_desc">讓AI查詢和建立行事曆事件</string>
+  <string name="assistant_page_local_tools_calendar_desc">讓 AI 查詢、建立和刪除行事曆事件</string>
   <string name="chat_message_tool_calendar_query">查詢日曆事件</string>
   <string name="chat_message_tool_calendar_create">建立事件: %1$s</string>
+  <string name="chat_message_tool_calendar_delete">刪除事件：%1$s</string>
   <string name="chat_page_move_to_folder">移至資料夾</string>
   <string name="chat_page_remove_from_folder">從資料夾移除</string>
   <string name="chat_page_create_folder">新資料夾</string>
@@ -1321,6 +1323,11 @@
   <string name="chat_page_queue_edit_title">編輯佇列中的訊息</string>
   <string name="chat_page_queue_paused_count">佇列已暫停 · %1$d</string>
   <string name="chat_page_queue_pending_count">佇列中 · %1$d</string>
+  <string name="chat_page_queue_send_now">傳送</string>
+  <string name="chat_page_queue_priority">下一則傳送</string>
+  <string name="chat_page_queue_expand">展開待傳送訊息</string>
+  <string name="chat_page_queue_collapse">收起待傳送訊息</string>
+  <string name="chat_page_queue_question_skipped">已略過此問題，繼續傳送新訊息。</string>
   <string name="chat_page_voice_connecting">連線中…</string>
   <string name="chat_page_voice_listening_queued">聆聽中；新的語音將排入佇列</string>
   <string name="chat_page_voice_listening">聆聽中；您說完話後即會傳送訊息</string>

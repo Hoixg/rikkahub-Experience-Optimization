@@ -155,6 +155,7 @@ fun ChatInput(
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
     onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
+    onSendQueuedMessageImmediately: (Uuid) -> Unit = {},
     onResumeMessageQueue: () -> Unit = {},
     onStartVoiceMode: (() -> Unit)? = null,
     voiceState: VoiceSessionState = VoiceSessionState(),
@@ -243,6 +244,7 @@ fun ChatInput(
                 onRemove = onRemoveQueuedMessage,
                 onBeginEdit = onBeginEditQueuedMessage,
                 onFinishEdit = onFinishEditQueuedMessage,
+                onSendImmediately = onSendQueuedMessageImmediately,
                 onResume = onResumeMessageQueue,
             )
             Surface(

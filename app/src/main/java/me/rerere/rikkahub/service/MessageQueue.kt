@@ -21,6 +21,8 @@ data class QueuedMessage(
 data class MessageQueueState(
     val messages: List<QueuedMessage> = emptyList(),
     val paused: Boolean = false,
+    /** Message selected for immediate dispatch after the current safe checkpoint. */
+    val priorityMessageId: Uuid? = null,
 )
 
 internal fun unreferencedQueuedAttachmentUrls(
@@ -61,15 +63,34 @@ class MessageQueue {
         val current = state.value
         if (current.paused) return null
         val next = current.messages.firstOrNull()?.takeUnless { it.isEditing } ?: return null
-        mutableState.value = current.copy(messages = current.messages.drop(1))
+        mutableState.value = current.copy(
+            messages = current.messages.drop(1),
+            priorityMessageId = current.priorityMessageId.takeUnless { it == next.id },
+        )
         return next
+    }
+
+    /** Promote one queued message while preserving the relative order of all other messages. */
+    @Synchronized
+    fun prioritize(id: Uuid): QueuedMessage? {
+        val current = state.value
+        val selected = current.messages.firstOrNull { it.id == id && !it.isEditing } ?: return null
+        mutableState.value = current.copy(
+            messages = listOf(selected) + current.messages.filterNot { it.id == id },
+            paused = false,
+            priorityMessageId = id,
+        )
+        return selected
     }
 
     @Synchronized
     fun remove(id: Uuid): QueuedMessage? {
         val removed = state.value.messages.find { it.id == id } ?: return null
         mutableState.value =
-            state.value.copy(messages = state.value.messages.filterNot { it.id == id })
+            state.value.copy(
+                messages = state.value.messages.filterNot { it.id == id },
+                priorityMessageId = state.value.priorityMessageId.takeUnless { it == id },
+            )
         removed.reply?.complete(null)
         return removed
     }

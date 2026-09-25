@@ -261,6 +261,12 @@ private fun ChainOfThoughtScope.AskUserToolStep(
 ) {
     val isPending = tool.isPending
     val isAnswered = tool.approvalState is ToolApprovalState.Answered
+    val isSkipped = remember(tool.output) {
+        val output = tool.output.filterIsInstance<UIMessagePart.Text>().firstOrNull()?.text
+        runCatching {
+            output?.let { JsonInstant.parseToJsonElement(it).jsonObject["status"]?.jsonPrimitive?.contentOrNull } == "skipped"
+        }.getOrDefault(false)
+    }
     val arguments = tool.inputAsJson()
 
     // Parse questions from arguments
@@ -320,7 +326,13 @@ private fun ChainOfThoughtScope.AskUserToolStep(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                questions.forEach { q ->
+                if (isSkipped) {
+                    Text(
+                        text = stringResource(R.string.chat_page_queue_question_skipped),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else questions.forEach { q ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = q.question,

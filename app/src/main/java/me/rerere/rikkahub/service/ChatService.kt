@@ -383,6 +383,39 @@ class ChatService(
         dispatchNextQueuedMessage(conversationId)
     }
 
+    fun sendQueuedMessageImmediately(conversationId: Uuid, messageId: Uuid) {
+        val session = sessionManager.get(conversationId) ?: return
+        val (generationJob, pendingAskUser) = synchronized(session) {
+            if (session.messageQueue.prioritize(messageId) == null) return
+            session.messageQueue.resume()
+            val pendingAskUser = session.state.value.currentMessages.any { message ->
+                message.parts.any { part ->
+                    part is UIMessagePart.Tool && part.toolName == "ask_user" && part.isPending
+                }
+            }
+            session.getJob() to pendingAskUser
+        }
+
+        if (generationJob != null || pendingAskUser) {
+            // The user is replacing the answer to ask_user with a new message. Wait until the
+            // current turn has released the session, then close any ask_user question as skipped.
+            appScope.launch {
+                generationJob?.join()
+                val stillWaitingForAskUser = session.state.value.currentMessages.any { message ->
+                    message.parts.any { part ->
+                        part is UIMessagePart.Tool && part.toolName == "ask_user" && part.isPending
+                    }
+                }
+                if (session.messageQueue.state.value.priorityMessageId == messageId && stillWaitingForAskUser) {
+                    finishInterruptedPendingTools(conversationId, skipAskUserQuestion = true)
+                }
+                dispatchNextQueuedMessage(conversationId)
+            }
+        } else {
+            dispatchNextQueuedMessage(conversationId)
+        }
+    }
+
     private fun cleanupQueuedAttachments(previous: QueuedMessage) {
         val candidates = previous.parts.localFileUrls()
         if (candidates.isEmpty()) return
@@ -784,6 +817,9 @@ class ChatService(
                 },
                 outputTransformers = outputTransformers,
                 tools = tools,
+                shouldYieldAfterToolResults = {
+                    session.messageQueue.state.value.priorityMessageId != null
+                },
             ).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = session.finishGeneration { conversation ->
@@ -830,6 +866,9 @@ class ChatService(
             val finalConversation = getConversationFlow(conversationId).value
 
             if (scheduledJobDao.getRunByConversation(conversationId.toString()) != null) return@onSuccess
+            if (sessionManager.get(conversationId)?.messageQueue?.state?.value?.priorityMessageId != null) {
+                return@onSuccess
+            }
 
             sessionManager.launchWithSession(conversationId) {
                 generateTitle(conversationId, finalConversation)
@@ -900,11 +939,27 @@ class ChatService(
         )
     }
 
-    private suspend fun finishInterruptedPendingTools(conversationId: Uuid) {
+    private fun skipAskUserTool(tool: UIMessagePart.Tool): UIMessagePart.Tool {
+        if (tool.toolName != "ask_user") return cancelToolByUser(tool)
+        return tool.copy(
+            output = listOf(
+                UIMessagePart.Text(
+                    """{"status":"skipped","reason":"A new queued message was sent instead of answering this question."}"""
+                )
+            )
+        )
+    }
+
+    private suspend fun finishInterruptedPendingTools(
+        conversationId: Uuid,
+        skipAskUserQuestion: Boolean = false,
+    ) {
         val currentConversation = getConversationFlow(conversationId).value
         val lastNode = currentConversation.messageNodes.lastOrNull() ?: return
         val lastMessage = lastNode.currentMessage
-        val updatedMessage = lastMessage.finishPendingTools(::cancelToolByUser)
+        val transform: (UIMessagePart.Tool) -> UIMessagePart.Tool =
+            if (skipAskUserQuestion) ::skipAskUserTool else ::cancelToolByUser
+        val updatedMessage = lastMessage.finishPendingTools(transform)
         if (updatedMessage == lastMessage) {
             return
         }

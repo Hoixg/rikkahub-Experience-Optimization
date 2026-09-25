@@ -392,6 +392,7 @@ private fun ChatPageContent(
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
                     onFinishEditQueuedMessage = vm::finishEditQueuedMessage,
+                    onSendQueuedMessageImmediately = vm::sendQueuedMessageImmediately,
                     onResumeMessageQueue = vm::resumeMessageQueue,
                     loading = loadingJob != null,
                     settings = setting,

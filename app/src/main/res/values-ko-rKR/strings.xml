@@ -1076,6 +1076,7 @@
   <string name="setting_model_page_prompt_suggestion">채팅 답변 제안</string>
   <string name="setting_model_page_prompt_ocr">OCR 인식</string>
   <string name="setting_model_page_prompt_compress">컨텍스트 압축</string>
+  <string name="chat_page_compacting_context">컨텍스트 자동 압축 중…</string>
   <string name="setting_display_page_bubble_opacity_title">버블 불투명도</string>
   <string name="setting_provider_page_include_history_reasoning">이전 추론 내용 전송</string>
   <string name="setting_model_page_fast_model">빠른 모델</string>
@@ -1223,11 +1224,12 @@
   <string name="permission_calendar_read">캘린더 읽기</string>
   <string name="permission_calendar_read_desc">일정 관련 질문에 답변하기 위해 캘린더 이벤트를 읽습니다.</string>
   <string name="permission_calendar_write">캘린더 쓰기</string>
-  <string name="permission_calendar_write_desc">사용자를 대신하여 캘린더 이벤트를 생성합니다</string>
+  <string name="permission_calendar_write_desc">캘린더 일정을 대신 생성하거나 삭제합니다</string>
   <string name="assistant_page_local_tools_calendar_title">캘린더</string>
-  <string name="assistant_page_local_tools_calendar_desc">AI가 캘린더 이벤트를 조회하고 생성할 수 있도록 합니다</string>
+  <string name="assistant_page_local_tools_calendar_desc">AI가 캘린더 일정을 조회, 생성 및 삭제하도록 허용합니다</string>
   <string name="chat_message_tool_calendar_query">캘린더 일정 조회</string>
   <string name="chat_message_tool_calendar_create">일정 생성: %1$s</string>
+  <string name="chat_message_tool_calendar_delete">일정 삭제: %1$s</string>
   <string name="chat_page_move_to_folder">폴더로 이동</string>
   <string name="chat_page_remove_from_folder">폴더에서 제거</string>
   <string name="chat_page_create_folder">새 폴더</string>
@@ -1317,6 +1319,11 @@
   <string name="chat_page_queue_edit_title">대기 중인 메시지 편집</string>
   <string name="chat_page_queue_paused_count">대기열 일시 중지 · %1$d</string>
   <string name="chat_page_queue_pending_count">대기 중 · %1$d</string>
+  <string name="chat_page_queue_send_now">보내기</string>
+  <string name="chat_page_queue_priority">다음에 전송</string>
+  <string name="chat_page_queue_expand">대기 중인 메시지 펼치기</string>
+  <string name="chat_page_queue_collapse">대기 중인 메시지 접기</string>
+  <string name="chat_page_queue_question_skipped">질문을 건너뛰고 새 메시지를 보냈습니다.</string>
   <string name="chat_page_voice_tool_approval">도구 사용 승인이 필요합니다. 승인을 처리한 다음 음성 모드를 다시 시작하세요.</string>
   <string name="chat_page_voice_empty">인식된 음성이 없습니다.</string>
   <string name="chat_page_voice_tools_before_resume">음성 모드를 재개하기 전에 대기 중인 도구 사용 승인을 처리하세요.</string>

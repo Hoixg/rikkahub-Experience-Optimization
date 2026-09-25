@@ -136,6 +136,9 @@ class ChatVM(
     fun finishEditQueuedMessage(id: Uuid, parts: List<UIMessagePart>?) =
         chatService.finishEditQueuedMessage(_conversationId, id, parts)
 
+    fun sendQueuedMessageImmediately(id: Uuid) =
+        chatService.sendQueuedMessageImmediately(_conversationId, id)
+
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 
     // 生成完成

@@ -1076,6 +1076,7 @@
   <string name="setting_model_page_prompt_suggestion">チャット返信の提案</string>
   <string name="setting_model_page_prompt_ocr">OCR認識</string>
   <string name="setting_model_page_prompt_compress">コンテキスト圧縮</string>
+  <string name="chat_page_compacting_context">コンテキストを自動圧縮中…</string>
   <string name="setting_display_page_bubble_opacity_title">吹き出しの不透明度</string>
   <string name="setting_provider_page_include_history_reasoning">履歴の思考過程を送信</string>
   <string name="setting_model_page_fast_model">高速モデル</string>
@@ -1223,11 +1224,12 @@
   <string name="permission_calendar_read">カレンダーの読み取り</string>
   <string name="permission_calendar_read_desc">カレンダーのイベントを読み取り、スケジュール関連の質問に回答します。</string>
   <string name="permission_calendar_write">カレンダーへの書き込み</string>
-  <string name="permission_calendar_write_desc">あなたに代わってカレンダーイベントを作成します</string>
+  <string name="permission_calendar_write_desc">カレンダーイベントを作成または削除します</string>
   <string name="assistant_page_local_tools_calendar_title">カレンダー</string>
-  <string name="assistant_page_local_tools_calendar_desc">AIにカレンダーイベントの検索と作成を許可します</string>
+  <string name="assistant_page_local_tools_calendar_desc">AIによるカレンダーイベントの検索、作成、削除を許可します</string>
   <string name="chat_message_tool_calendar_query">カレンダーイベントを照会</string>
   <string name="chat_message_tool_calendar_create">イベントを作成: %1$s</string>
+  <string name="chat_message_tool_calendar_delete">イベントを削除: %1$s</string>
   <string name="chat_page_move_to_folder">フォルダに移動</string>
   <string name="chat_page_remove_from_folder">フォルダから削除</string>
   <string name="chat_page_create_folder">新規フォルダ</string>
@@ -1310,6 +1312,11 @@
   <string name="chat_page_queue_edit_title">送信待ちメッセージを編集</string>
   <string name="chat_page_queue_paused_count">送信一時停止中 · %1$d</string>
   <string name="chat_page_queue_pending_count">送信待ち · %1$d</string>
+  <string name="chat_page_queue_send_now">送信</string>
+  <string name="chat_page_queue_priority">次に送信</string>
+  <string name="chat_page_queue_expand">送信待ちメッセージを展開</string>
+  <string name="chat_page_queue_collapse">送信待ちメッセージを折りたたむ</string>
+  <string name="chat_page_queue_question_skipped">質問をスキップして、新しいメッセージを送信しました。</string>
   <string name="chat_page_voice_select_model">最初にチャットモデルを選択してください</string>
   <string name="chat_page_voice_finish_dictation">先に現在の音声入力を終了してください</string>
   <string name="chat_page_voice_resume_queue">メッセージキューは一時停止されています。先に再開してください。</string>

@@ -1076,6 +1076,7 @@
   <string name="setting_model_page_prompt_suggestion">Подсказки ответов в чате</string>
   <string name="setting_model_page_prompt_ocr">OCR распознавание</string>
   <string name="setting_model_page_prompt_compress">Сжатие контекста</string>
+  <string name="chat_page_compacting_context">Автоматическое сжатие контекста…</string>
   <string name="setting_display_page_bubble_opacity_title">Прозрачность пузырьков</string>
   <string name="setting_provider_page_include_history_reasoning">Отправлять историю рассуждений</string>
   <string name="setting_model_page_fast_model">Быстрая модель</string>
@@ -1223,11 +1224,12 @@
   <string name="permission_calendar_read">Чтение календаря</string>
   <string name="permission_calendar_read_desc">Чтение событий календаря для ответов на вопросы о вашем расписании.</string>
   <string name="permission_calendar_write">Запись в календарь</string>
-  <string name="permission_calendar_write_desc">Создавать события календаря от вашего имени</string>
+  <string name="permission_calendar_write_desc">Создавать или удалять события календаря от вашего имени</string>
   <string name="assistant_page_local_tools_calendar_title">Календарь</string>
-  <string name="assistant_page_local_tools_calendar_desc">Позволяет ИИ запрашивать и создавать события календаря</string>
+  <string name="assistant_page_local_tools_calendar_desc">Позволяет ИИ искать, создавать и удалять события календаря</string>
   <string name="chat_message_tool_calendar_query">Запросить события календаря</string>
   <string name="chat_message_tool_calendar_create">Создать событие: %1$s</string>
+  <string name="chat_message_tool_calendar_delete">Удалить событие: %1$s</string>
   <string name="chat_page_move_to_folder">Переместить в папку</string>
   <string name="chat_page_remove_from_folder">Убрать из папки</string>
   <string name="chat_page_create_folder">Новая папка</string>
@@ -1307,6 +1309,11 @@
   <string name="chat_page_queue_edit_title">Редактировать сообщение в очереди</string>
   <string name="chat_page_queue_paused_count">Очередь приостановлена · %1$d</string>
   <string name="chat_page_queue_pending_count">В очереди · %1$d</string>
+  <string name="chat_page_queue_send_now">Отправить</string>
+  <string name="chat_page_queue_priority">Отправить следующим</string>
+  <string name="chat_page_queue_expand">Развернуть очередь сообщений</string>
+  <string name="chat_page_queue_collapse">Свернуть очередь сообщений</string>
+  <string name="chat_page_queue_question_skipped">Вопрос пропущен, отправлено новое сообщение.</string>
   <string name="chat_page_voice_connecting">Подключение…</string>
   <string name="chat_page_voice_listening_queued">Слушаю; новые фразы будут поставлены в очередь</string>
   <string name="chat_page_voice_listening">Слушаю; ваше сообщение будет отправлено, когда вы закончите говорить</string>
