@@ -31,6 +31,7 @@ internal fun buildCalendarQueryTool(context: Context): Tool = Tool(
         Query calendar events on the user's device within a time range.
         Specify a custom interval with 'begin'/'end', or use the 'range' preset (today/week/month).
         Returns a list of events with title, description, location, start/end times, and calendar info.
+        Each event includes an 'id' and title; pass both to calendar_delete when the user asks to delete it.
         The device timezone is '${ZoneId.systemDefault()}' (UTC offset ${OffsetDateTime.now().offset});
         times without an explicit offset are interpreted in this timezone.
         Requires the 'Calendar' permission; if it is not granted, an error is returned and the
@@ -394,6 +395,135 @@ internal fun buildCalendarCreateTool(context: Context): Tool = Tool(
     }
 )
 
+internal fun buildCalendarDeleteTool(context: Context): Tool = Tool(
+    name = "calendar_delete",
+    description = """
+        Delete a calendar event on the user's device. Only delete an event using its 'id' and exact
+        'title' returned by calendar_query. Every deletion requires user approval. For a recurring
+        event, deletion affects the entire series; set 'delete_series' to true only when the user
+        explicitly asked to delete the whole series. Deleting a single occurrence is not supported.
+        Requires Calendar read and write permissions.
+    """.trimIndent().replace("\n", " "),
+    needsApproval = { true },
+    parameters = {
+        InputSchema.Obj(
+            properties = buildJsonObject {
+                put("event_id", buildJsonObject {
+                    put("type", "integer")
+                    put("description", "The event 'id' returned by calendar_query.")
+                })
+                put("expected_title", buildJsonObject {
+                    put("type", "string")
+                    put("description", "The exact event title returned by calendar_query; used to verify the target before deletion.")
+                })
+                put("delete_series", buildJsonObject {
+                    put("type", "boolean")
+                    put("description", "Set true only when the user explicitly asked to delete the entire recurring series. Default false.")
+                })
+            },
+            required = listOf("event_id", "expected_title")
+        )
+    },
+    execute = { args ->
+        if (!hasCalendarWritePermission(context)) {
+            val payload = buildJsonObject {
+                put("error", "NO_PERMISSION")
+                put(
+                    "message",
+                    "Calendar read and write permissions are required. Please ask the user to enable " +
+                        "calendar permissions in the assistant's local tools settings."
+                )
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+
+        val params = args.jsonObject
+        val eventId = params["event_id"]?.jsonPrimitive?.contentOrNull?.toLongOrNull()
+        val expectedTitle = params["expected_title"]?.jsonPrimitive?.contentOrNull
+        val deleteSeries = params["delete_series"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
+        if (eventId == null || eventId <= 0 || expectedTitle == null) {
+            val payload = buildJsonObject {
+                put("error", "MISSING_REQUIRED")
+                put("message", "Both a valid 'event_id' and 'expected_title' from calendar_query are required.")
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+
+        val eventUri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
+        val projection = arrayOf(
+            CalendarContract.Events.TITLE,
+            CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.RRULE,
+            CalendarContract.Events.RDATE,
+        )
+        var currentTitle: String? = null
+        var calendarId: Long? = null
+        var recurring = false
+        context.contentResolver.query(eventUri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                currentTitle = cursor.getString(0) ?: ""
+                calendarId = cursor.getLong(1)
+                recurring = !cursor.isNull(2) && cursor.getString(2).isNotBlank() ||
+                    !cursor.isNull(3) && cursor.getString(3).isNotBlank()
+            }
+        }
+
+        if (currentTitle == null || calendarId == null) {
+            val payload = buildJsonObject {
+                put("error", "EVENT_NOT_FOUND")
+                put("message", "No calendar event was found for event_id=$eventId.")
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+        if (currentTitle != expectedTitle) {
+            val payload = buildJsonObject {
+                put("error", "EVENT_CHANGED")
+                put("message", "The event title changed since it was queried. Query the calendar again before deleting.")
+                put("current_title", currentTitle)
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+        if (recurring && !deleteSeries) {
+            val payload = buildJsonObject {
+                put("error", "RECURRING_EVENT_REQUIRES_SCOPE")
+                put("message", "This is a recurring event. Deleting one occurrence is not supported. Set delete_series=true only if the user explicitly asked to remove the whole series.")
+                put("title", currentTitle)
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+
+        val accessLevel = getCalendarAccessLevel(context, calendarId)
+        if (accessLevel == null || accessLevel < CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) {
+            val payload = buildJsonObject {
+                put("error", "CALENDAR_NOT_WRITABLE")
+                put("message", "The event belongs to a calendar that cannot be modified by this app.")
+                put("title", currentTitle)
+            }
+            return@Tool listOf(UIMessagePart.Text(payload.toString()))
+        }
+
+        val deleted = context.contentResolver.delete(
+            eventUri,
+            "${CalendarContract.Events._ID} = ?",
+            arrayOf(eventId.toString()),
+        )
+        val payload = buildJsonObject {
+            if (deleted == 1) {
+                put("success", true)
+                put("event_id", eventId)
+                put("title", currentTitle)
+                put("deleted_series", recurring)
+            } else {
+                put("error", "DELETE_FAILED")
+                put("message", "The calendar provider did not delete the requested event.")
+                put("event_id", eventId)
+                put("title", currentTitle)
+            }
+        }
+        listOf(UIMessagePart.Text(payload.toString()))
+    }
+)
+
 private fun hasCalendarReadPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
@@ -423,6 +553,20 @@ private fun getDefaultCalendarId(context: Context): Long? {
         "${CalendarContract.Calendars.VISIBLE} DESC"
     )?.use { cursor ->
         if (cursor.moveToFirst()) return cursor.getLong(0)
+    }
+    return null
+}
+
+private fun getCalendarAccessLevel(context: Context, calendarId: Long): Int? {
+    val projection = arrayOf(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
+    context.contentResolver.query(
+        CalendarContract.Calendars.CONTENT_URI,
+        projection,
+        "${CalendarContract.Calendars._ID} = ?",
+        arrayOf(calendarId.toString()),
+        null,
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) return cursor.getInt(0)
     }
     return null
 }
