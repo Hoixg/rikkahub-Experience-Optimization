@@ -91,6 +91,105 @@ class ContextWindowTest {
     }
 
     @Test
+    fun streamedRequestWindowUpdatePreservesCheckpointSourceAndAppendsReplyAtHistoryTail() {
+        val first = node(message("old user"))
+        val boundary = node(message("old assistant", MessageRole.ASSISTANT))
+        val recent = node(message("recent user"))
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = listOf(first, boundary, recent))
+        val checkpoint = CompressionSummary(
+            content = "compressed prefix",
+            boundaryNodeId = boundary.id,
+            sourceFingerprint = initial.compressionSourceFingerprint(boundary.id),
+        )
+        val compacted = initial.copy(compressionSummaries = listOf(checkpoint))
+        val requestWindow = compacted.requestWindowForGeneration()
+        val reply = message("new assistant reply", MessageRole.ASSISTANT)
+
+        val updated = compacted.updateRequestWindowMessages(
+            requestWindow = requestWindow,
+            messages = requestWindow.messages + reply,
+        )
+
+        assertEquals(listOf(first, boundary), updated.messageNodes.take(2))
+        assertEquals(recent.currentMessage, updated.messageNodes[2].currentMessage)
+        assertEquals(reply, updated.messageNodes[3].currentMessage)
+        assertEquals(checkpoint, updated.activeCompression())
+        assertTrue(updated.requestWindowMessages().first().isCompactionCheckpoint())
+        assertEquals(listOf(recent, updated.messageNodes[3]), updated.windowNodes())
+        assertEquals(listOf(recent), selectNodesForCompaction(updated.windowNodes(), keepBudgetTokens = 0))
+    }
+
+    @Test
+    fun uncompressedRequestWindowUpdateKeepsExistingNodeAlignment() {
+        val first = node(message("first"))
+        val second = node(message("second", MessageRole.ASSISTANT))
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = listOf(first, second))
+        val requestWindow = initial.requestWindowForGeneration()
+        val reply = message("new reply", MessageRole.ASSISTANT)
+
+        val updated = initial.updateRequestWindowMessages(requestWindow, requestWindow.messages + reply)
+
+        assertEquals(listOf(first, second), updated.messageNodes.take(2))
+        assertEquals(reply, updated.messageNodes[2].currentMessage)
+    }
+
+    @Test
+    fun checkpointAwareAssistantRegenerationMapsReplyToOriginalNode() {
+        val first = node(message("old user"))
+        val boundary = node(message("old assistant", MessageRole.ASSISTANT))
+        val recentUser = node(message("recent user"))
+        val recentAssistant = node(message("recent assistant", MessageRole.ASSISTANT))
+        val initial = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(first, boundary, recentUser, recentAssistant),
+        )
+        val checkpoint = CompressionSummary(
+            content = "compressed prefix",
+            boundaryNodeId = boundary.id,
+            sourceFingerprint = initial.compressionSourceFingerprint(boundary.id),
+        )
+        val compacted = initial.copy(compressionSummaries = listOf(checkpoint))
+        val requestWindow = compacted.requestWindowForGeneration(messageRange = 0..<3)
+        val regenerated = message("regenerated assistant", MessageRole.ASSISTANT)
+
+        val updated = compacted.updateRequestWindowMessages(
+            requestWindow = requestWindow,
+            messages = requestWindow.messages + regenerated,
+        )
+
+        assertEquals(listOf(first, boundary), updated.messageNodes.take(2))
+        assertEquals(2, updated.messageNodes[3].messages.size)
+        assertEquals(regenerated, updated.messageNodes[3].currentMessage)
+        assertEquals(checkpoint, updated.activeCompression())
+    }
+
+    @Test
+    fun regenerationBeforeCheckpointUsesRawPrefixAndInvalidatesStaleCheckpointAfterEdit() {
+        val first = node(message("old user"))
+        val boundary = node(message("old assistant", MessageRole.ASSISTANT))
+        val recent = node(message("recent user"))
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = listOf(first, boundary, recent))
+        val checkpoint = CompressionSummary(
+            content = "compressed prefix",
+            boundaryNodeId = boundary.id,
+            sourceFingerprint = initial.compressionSourceFingerprint(boundary.id),
+        )
+        val compacted = initial.copy(compressionSummaries = listOf(checkpoint))
+        val requestWindow = compacted.requestWindowForGeneration(messageRange = 0..<1)
+        val regenerated = message("regenerated boundary", MessageRole.ASSISTANT)
+
+        val updated = compacted.updateRequestWindowMessages(
+            requestWindow = requestWindow,
+            messages = requestWindow.messages + regenerated,
+        )
+
+        assertEquals(listOf(first.currentMessage), requestWindow.messages)
+        assertFalse(requestWindow.messages.any { it.isCompactionCheckpoint() })
+        assertEquals(regenerated, updated.messageNodes[1].currentMessage)
+        assertNull(updated.activeCompression())
+    }
+
+    @Test
     fun requestWindowFallsBackWhenBoundaryIsMissing() {
         val first = node(message("old"))
         val second = node(message("new", MessageRole.ASSISTANT))

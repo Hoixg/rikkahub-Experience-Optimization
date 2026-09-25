@@ -1129,6 +1129,9 @@
   <string name="setting_model_page_prompt_ocr">OCR识别</string>
   <string name="setting_model_page_prompt_compress">上下文压缩</string>
   <string name="chat_page_compacting_context">正在自动压缩上下文…</string>
+  <string name="chat_page_compacting_context_map_progress">正在压缩上下文片段 %1$d/%2$d…</string>
+  <string name="chat_page_compacting_context_reduce_progress">正在归并上下文摘要·第 %1$d 轮·%2$d/%3$d…</string>
+  <string name="chat_page_compacting_context_finalize">正在生成最终上下文检查点…</string>
   <string name="setting_provider_page_model_api_key">指定 API Key</string>
   <string name="setting_provider_page_model_api_key_desc">选择此模型使用所属提供商已保存的 API Key。</string>
   <string name="setting_provider_page_model_api_key_inherit">跟随提供商当前 Key</string>

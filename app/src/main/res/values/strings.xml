@@ -1151,6 +1151,9 @@
   <string name="setting_model_page_prompt_ocr">OCR Recognition</string>
   <string name="setting_model_page_prompt_compress">Context Compression</string>
   <string name="chat_page_compacting_context">Automatically compacting context…</string>
+  <string name="chat_page_compacting_context_map_progress">Summarizing context chunks %1$d/%2$d…</string>
+  <string name="chat_page_compacting_context_reduce_progress">Merging context summaries · round %1$d · %2$d/%3$d…</string>
+  <string name="chat_page_compacting_context_finalize">Writing final context checkpoint…</string>
   <string name="setting_provider_page_model_api_key">Model API Key</string>
   <string name="setting_provider_page_model_api_key_desc">Choose a saved API Key from this model\'s provider.</string>
   <string name="setting_provider_page_model_api_key_inherit">Follow provider current Key</string>

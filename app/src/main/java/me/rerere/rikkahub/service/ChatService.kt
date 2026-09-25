@@ -24,7 +24,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
@@ -804,6 +806,7 @@ class ChatService(
             val conversation = getConversationFlow(conversationId).value
 
             val requestConversation = getConversationFlow(conversationId).value
+            val requestWindow = requestConversation.requestWindowForGeneration(messageRange)
 
             val tools = try {
                 chatToolFactory.createTools(
@@ -833,13 +836,7 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = session.processingStatus,
-                messages = requestConversation.requestWindowMessages().let {
-                    if (messageRange != null) {
-                        it.subList(messageRange.start, messageRange.endInclusive + 1)
-                    } else {
-                        it
-                    }
-                },
+                messages = requestWindow.messages,
                 assistant = assistant,
                 conversationId = conversationId,
                 conversationSystemPrompt = conversation.customSystemPrompt,
@@ -880,7 +877,7 @@ class ChatService(
                 when (chunk) {
                     is GenerationChunk.Messages -> {
                         val updatedConversation = getConversationFlow(conversationId).value
-                            .updateCurrentMessages(chunk.messages)
+                            .updateRequestWindowMessages(requestWindow, chunk.messages)
                         updateConversation(conversationId, updatedConversation)
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
@@ -1151,6 +1148,7 @@ class ChatService(
                 nodesToCompress = nodesToCompress,
                 settings = settings,
                 model = model,
+                processingStatus = processingStatus,
             )
             val boundaryNodeId = nodesToCompress.last().id
             val sourceFingerprint = conversation.compressionSourceFingerprint(boundaryNodeId)
@@ -1261,6 +1259,7 @@ class ChatService(
         nodesToCompress: List<MessageNode>,
         settings: Settings,
         model: Model,
+        processingStatus: MutableStateFlow<String?>,
     ): String {
         if (nodesToCompress.isEmpty()) throw ContextCompactionException(
             context.getString(R.string.error_compress_context_failed),
@@ -1286,6 +1285,23 @@ class ChatService(
                     (inputBudget - 512).coerceAtLeast(1),
                 )
                 val semaphore = Semaphore(AUTO_COMPRESS_CONCURRENCY)
+                val progressMutex = Mutex()
+                var completedMapChunks = 0
+
+                processingStatus.value = context.getString(
+                    R.string.chat_page_compacting_context_map_progress,
+                    0,
+                    sourceChunks.size,
+                )
+
+                suspend fun reportMapChunkComplete() = progressMutex.withLock {
+                    completedMapChunks++
+                    processingStatus.value = context.getString(
+                        R.string.chat_page_compacting_context_map_progress,
+                        completedMapChunks,
+                        sourceChunks.size,
+                    )
+                }
 
                 suspend fun summarize(content: String, targetTokens: Int, additionalContext: String = ""): String =
                     semaphore.withPermit {
@@ -1304,7 +1320,9 @@ class ChatService(
                     }
 
                 var summaries = coroutineScope {
-                    sourceChunks.map { chunk -> async { summarize(chunk, mapTarget) } }.awaitAll()
+                    sourceChunks.map { chunk ->
+                        async { summarize(chunk, mapTarget).also { reportMapChunkComplete() } }
+                    }.awaitAll()
                 }
                 var reducePasses = 0
                 while (summaries.sumOf(::estimateTextTokenCount) > contentBudget) {
@@ -1313,8 +1331,29 @@ class ChatService(
                     }
                     val groups = chunkCompactionTexts(summaries, (inputBudget - 512).coerceAtLeast(1))
                     val previousSize = summaries.sumOf(::estimateTextTokenCount)
+                    var completedReduceGroups = 0
+                    processingStatus.value = context.getString(
+                        R.string.chat_page_compacting_context_reduce_progress,
+                        reducePasses,
+                        completedReduceGroups,
+                        groups.size,
+                    )
                     summaries = coroutineScope {
-                        groups.map { group -> async { summarize(group, reduceTarget) } }.awaitAll()
+                        groups.map { group ->
+                            async {
+                                summarize(group, reduceTarget).also {
+                                    progressMutex.withLock {
+                                        completedReduceGroups++
+                                        processingStatus.value = context.getString(
+                                            R.string.chat_page_compacting_context_reduce_progress,
+                                            reducePasses,
+                                            completedReduceGroups,
+                                            groups.size,
+                                        )
+                                    }
+                                }
+                            }
+                        }.awaitAll()
                     }
                     val reducedSize = summaries.sumOf(::estimateTextTokenCount)
                     if (reducedSize >= previousSize && groups.size >= summaries.size) {
@@ -1322,6 +1361,7 @@ class ChatService(
                     }
                 }
 
+                processingStatus.value = context.getString(R.string.chat_page_compacting_context_finalize)
                 summarize(
                     content = summaries.joinToString("\n\n"),
                     targetTokens = reduceTarget,

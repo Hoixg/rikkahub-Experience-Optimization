@@ -88,18 +88,91 @@ data class Conversation(
         }
     }
 
-    fun requestWindowMessages(): List<UIMessage> {
-        val checkpoint = activeCompression() ?: return currentMessages
-        val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
-        if (boundaryIndex < 0) return currentMessages
-        val checkpointMessage = UIMessage(
-            role = MessageRole.USER,
-            parts = listOf(UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))),
-            isSynthetic = true,
-        )
-        return listOf(checkpointMessage) + messageNodes
-            .drop(boundaryIndex + 1)
-            .map { it.messages[it.selectIndex] }
+    fun requestWindowMessages(): List<UIMessage> = requestWindowForGeneration().messages
+
+    /** Builds the model window together with the original node indexes used to persist streamed updates. */
+    internal fun requestWindowForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
+        val checkpoint = activeCompression()
+        val boundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
+            messageNodes.indexOfFirst { it.id == boundaryId }.takeIf { it >= 0 }
+        }
+        val messages = mutableListOf<UIMessage>()
+        val nodeIndexes = mutableListOf<Int?>()
+
+        if (checkpoint == null || boundaryIndex == null) {
+            messageNodes.forEachIndexed { index, node ->
+                if (messageRange == null || index in messageRange) {
+                    messages += node.messages[node.selectIndex]
+                    nodeIndexes += index
+                }
+            }
+        } else {
+            val shouldUseCheckpoint = messageRange == null ||
+                messageRange.start > boundaryIndex || messageRange.endInclusive >= boundaryIndex
+
+            if (shouldUseCheckpoint) {
+                messages += UIMessage(
+                    role = MessageRole.USER,
+                    parts = listOf(UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))),
+                    isSynthetic = true,
+                )
+                nodeIndexes += null
+            }
+
+            messageNodes.forEachIndexed { index, node ->
+                val belongsToWindow = if (shouldUseCheckpoint) {
+                    index > boundaryIndex
+                } else {
+                    index <= boundaryIndex
+                }
+                if (belongsToWindow && (messageRange == null || index in messageRange)) {
+                    messages += node.messages[node.selectIndex]
+                    nodeIndexes += index
+                }
+            }
+        }
+
+        val appendNodeIndex = if (messageRange == null) {
+            messageNodes.size
+        } else {
+            (messageRange.endInclusive.toLong() + 1L)
+                .coerceIn(0L, messageNodes.size.toLong())
+                .toInt()
+        }
+        return ConversationRequestWindow(messages, nodeIndexes, appendNodeIndex)
+    }
+
+    /** Applies streamed request-window messages without persisting synthetic checkpoint messages. */
+    internal fun updateRequestWindowMessages(
+        requestWindow: ConversationRequestWindow,
+        messages: List<UIMessage>,
+    ): Conversation {
+        val newNodes = messageNodes.toMutableList()
+        messages.forEachIndexed { responseIndex, message ->
+            val nodeIndex = if (responseIndex < requestWindow.sourceNodeIndexes.size) {
+                requestWindow.sourceNodeIndexes[responseIndex] ?: return@forEachIndexed
+            } else {
+                requestWindow.appendNodeIndex + responseIndex - requestWindow.sourceNodeIndexes.size
+            }
+
+            val node = newNodes.getOrNull(nodeIndex)
+            if (node == null) {
+                if (nodeIndex == newNodes.size) newNodes += message.toMessageNode()
+                return@forEachIndexed
+            }
+
+            val updatedMessages = node.messages.toMutableList()
+            val existingIndex = updatedMessages.indexOfFirst { it.id == message.id }
+            val selectedIndex = if (existingIndex >= 0) {
+                updatedMessages[existingIndex] = message
+                node.selectIndex
+            } else {
+                updatedMessages += message
+                updatedMessages.lastIndex
+            }
+            newNodes[nodeIndex] = node.copy(messages = updatedMessages, selectIndex = selectedIndex)
+        }
+        return copy(messageNodes = newNodes)
     }
 
     fun windowNodes(): List<MessageNode> {
@@ -165,6 +238,12 @@ data class Conversation(
         )
     }
 }
+
+internal class ConversationRequestWindow(
+    val messages: List<UIMessage>,
+    internal val sourceNodeIndexes: List<Int?>,
+    internal val appendNodeIndex: Int,
+)
 
 @Serializable
 data class CompressionSummary(
