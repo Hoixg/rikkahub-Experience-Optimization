@@ -315,6 +315,14 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
+    /** Update the checkpoint column without rewriting message rows from a possibly stale snapshot. */
+    suspend fun updateCompressionSummaries(conversationId: Uuid, summaries: List<CompressionSummary>) {
+        conversationDAO.updateCompressionSummaries(
+            id = conversationId.toString(),
+            summaries = JsonInstant.encodeToString(summaries),
+        )
+    }
+
     suspend fun deleteConversation(conversation: Conversation) {
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {

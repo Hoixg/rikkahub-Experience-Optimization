@@ -322,6 +322,11 @@
   <string name="error_title_operation">操作失败</string>
   <string name="error_title_regenerate_message">消息重新生成失败</string>
   <string name="error_title_send_message">消息发送失败</string>
+  <string name="error_title_compress_context">上下文压缩失败</string>
+  <string name="error_compress_context_failed">自动压缩上下文失败。消息仍保留在待发送队列中，请检查网络或模型设置后恢复队列。</string>
+  <string name="error_compress_context_timeout">自动压缩上下文等待超过 15 分钟，已停止本次发送，消息仍保留在队列中。请检查网络后恢复队列。</string>
+  <string name="error_compress_context_still_too_large">压缩后对话仍超出当前模型的上下文长度，请更换上下文更大的模型或缩短对话。</string>
+  <string name="error_compress_context_changed">摘要生成期间对话内容发生变化，未保存检查点。请重试发送。</string>
   <string name="error_title_tool_approval">工具调用处理失败</string>
   <string name="error_title_tool_unavailable">工具不可用</string>
   <string name="error_title_translate_message">消息翻译失败</string>

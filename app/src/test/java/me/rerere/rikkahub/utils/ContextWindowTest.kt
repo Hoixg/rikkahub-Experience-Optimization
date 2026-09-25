@@ -10,6 +10,7 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -111,9 +112,10 @@ class ContextWindowTest {
             .toInstant(TimeZone.currentSystemDefault())
             .toJavaInstant()
         val later = LocalDateTime(2026, 1, 1, 11, 0)
+        val model = Model(modelId = "context-test-model")
         val conversation = Conversation(
             assistantId = Uuid.random(),
-            messageNodes = listOf(node(message("new", MessageRole.ASSISTANT))),
+            messageNodes = listOf(node(message("new", MessageRole.ASSISTANT).copy(modelId = model.id))),
             compressionSummaries = listOf(
                 CompressionSummary(content = "summary", boundaryNodeId = Uuid.random(), createdAt = checkpointAt),
             ),
@@ -127,7 +129,7 @@ class ContextWindowTest {
             messageNodes = listOf(node(usageMessage)),
         )
 
-        assertEquals(123, usageConversation.estimateWindowTokens(Model(modelId = "context-test-model")))
+        assertEquals(123, usageConversation.estimateWindowTokens(model))
     }
 
     @Test
@@ -150,6 +152,133 @@ class ContextWindowTest {
             ),
         )
 
-        assertEquals(88, conversation.estimateWindowTokens(Model(modelId = "context-test-model")))
+        assertEquals(estimateTokenCount(conversation.requestWindowMessages()), conversation.estimateWindowTokens(Model(modelId = "context-test-model")))
+    }
+
+    @Test
+    fun assistantUsageFromAnotherModelFallsBackToLocalEstimate() {
+        val usageMessage = message("new", MessageRole.ASSISTANT).copy(
+            usage = TokenUsage(promptTokens = 10_000),
+            modelId = Uuid.random(),
+        )
+        val conversation = Conversation(
+            assistantId = Uuid.random(),
+            messageNodes = listOf(node(usageMessage)),
+        )
+
+        assertEquals(estimateTokenCount(conversation.requestWindowMessages()), conversation.estimateWindowTokens(Model(modelId = "context-test-model")))
+    }
+
+    @Test
+    fun pendingInputIsIncludedInThresholdCalculation() {
+        val currentTokens = 75
+        val pendingTokens = estimateTokenCount(listOf(message("x".repeat(100))))
+
+        assertFalse(shouldAutoCompact(true, currentTokens, 100))
+        assertTrue(shouldAutoCompact(true, currentTokens + pendingTokens, 100))
+        assertTrue(
+            estimateTokenCount(listOf(UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Image("file:///image.png"))))) >= 1_024,
+        )
+    }
+
+    @Test
+    fun shortConversationCanCompactAtLeastOneNode() {
+        val nodes = listOf(node(message("first")), node(message("last")))
+
+        assertEquals(listOf(nodes.first()), selectNodesForCompaction(nodes, keepBudgetTokens = 0))
+        assertEquals(listOf(nodes.first()), selectNodesForCompaction(nodes, keepBudgetTokens = Int.MAX_VALUE))
+        assertEquals(1, selectNodesForCompaction(nodes, keepBudgetTokens = Int.MAX_VALUE).size)
+        assertTrue(selectNodesForCompaction(listOf(nodes.first()), keepBudgetTokens = 0).isNotEmpty())
+    }
+
+    @Test
+    fun compactionInputKeepsToolsAndAttachmentMetadataButNotLocalPaths() {
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(
+                UIMessagePart.Document("file:///private/report.pdf", "report.pdf", "application/pdf"),
+                UIMessagePart.Tool(
+                    toolCallId = "call-1",
+                    toolName = "read_file",
+                    input = "{\"path\":\"notes.txt\"}",
+                    output = listOf(UIMessagePart.Text("file contents")),
+                ),
+            ),
+        )
+
+        val formatted = message.toCompactionText()
+
+        assertTrue(formatted.contains("report.pdf"))
+        assertTrue(formatted.contains("application/pdf"))
+        assertTrue(formatted.contains("read_file"))
+        assertTrue(formatted.contains("notes.txt"))
+        assertTrue(formatted.contains("file contents"))
+        assertFalse(formatted.contains("file:///private"))
+    }
+
+    @Test
+    fun compactionChunksRespectEstimatedTokenBudgetAndPreserveContent() {
+        val text = "中文内容和 latin text ".repeat(800)
+        val chunks = chunkCompactionTexts(listOf(text), tokenBudget = 128)
+
+        assertTrue(chunks.size > 1)
+        assertTrue(chunks.all { estimateTextTokenCount(it) <= 128 })
+        assertEquals(text, chunks.joinToString(""))
+    }
+
+    @Test
+    fun priorCheckpointIsAddedToOnlyTheFinalMergeContext() {
+        val prior = "previous checkpoint"
+        val context = priorCheckpointMergeContext(prior)
+        val sourceChunks = chunkCompactionTexts(listOf("new message 1", "new message 2"), tokenBudget = 32)
+
+        assertTrue(sourceChunks.none { it.contains(prior) })
+        assertEquals(1, context.windowed(prior.length).count { it == prior })
+        assertEquals("", priorCheckpointMergeContext("  "))
+    }
+
+    @Test
+    fun oldCheckpointJsonWithoutFingerprintRemainsReadable() {
+        val checkpoint = CompressionSummary(content = "legacy summary", boundaryNodeId = Uuid.random())
+        val oldJson = JsonInstant.encodeToString(checkpoint)
+            .replace(Regex(",\\\"sourceFingerprint\\\":null"), "")
+
+        val decoded = JsonInstant.decodeFromString<CompressionSummary>(oldJson)
+
+        assertEquals("legacy summary", decoded.content)
+        assertNull(decoded.sourceFingerprint)
+    }
+
+    @Test
+    fun sourceFingerprintDetectsBranchAndAttachmentChangesButAcceptsLegacyCheckpoint() {
+        val first = node(
+            message("selected").copy(parts = listOf(UIMessagePart.Text("selected"), UIMessagePart.Image("file:///one.png"))),
+            message("alternate").copy(parts = listOf(UIMessagePart.Text("alternate"), UIMessagePart.Image("file:///two.png"))),
+        )
+        val later = node(message("new"))
+        val initial = Conversation(assistantId = Uuid.random(), messageNodes = listOf(first, later))
+        val fingerprint = initial.compressionSourceFingerprint(first.id)!!
+        val checkpoint = CompressionSummary(
+            content = "summary",
+            boundaryNodeId = first.id,
+            sourceFingerprint = fingerprint,
+        )
+        val withCheckpoint = initial.copy(compressionSummaries = listOf(checkpoint))
+
+        assertEquals(checkpoint, withCheckpoint.activeCompression())
+        assertEquals(
+            checkpoint,
+            withCheckpoint.copy(messageNodes = listOf(first, later, node(message("appended")))).activeCompression(),
+        )
+        assertTrue(withCheckpoint.copy(messageNodes = listOf(first.copy(selectIndex = 1), later)).activeCompression() == null)
+        val changedAlternate = first.copy(messages = first.messages + message("new branch"))
+        assertTrue(withCheckpoint.copy(messageNodes = listOf(changedAlternate, later)).activeCompression() == null)
+        val changedAttachment = first.copy(messages = first.messages.mapIndexed { index, item ->
+            if (index == 0) item.copy(parts = listOf(UIMessagePart.Image("file:///changed.png"))) else item
+        })
+        assertTrue(withCheckpoint.copy(messageNodes = listOf(changedAttachment, later)).activeCompression() == null)
+
+        val legacy = withCheckpoint.copy(compressionSummaries = listOf(checkpoint.copy(sourceFingerprint = null)))
+        assertEquals("summary", legacy.activeCompression()?.content)
     }
 }

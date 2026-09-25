@@ -61,32 +61,28 @@ fun Conversation.estimateWindowTokens(model: Model?): Int {
     val usageTokens = lastAssistant?.usage?.promptTokens ?: 0
     val checkpoint = activeCompression()
     val finishedAt = lastAssistant?.finishedAt ?: lastAssistant?.createdAt
-    val usageUsable = usageTokens > 0 && lastAssistant != null && (
-        checkpoint == null ||
-            (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
-        )
+    val usageUsable = usageTokens > 0 && lastAssistant != null && model != null &&
+        lastAssistant.modelId == model.id &&
+        (
+            checkpoint == null ||
+                (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
+            )
     return if (usageUsable) usageTokens else estimateTokenCount(window)
 }
 
 fun estimateTokenCount(messages: List<UIMessage>): Int {
-    var cjk = 0
-    var other = 0
-    for (message in messages) {
-        for (part in message.parts) {
-            val text = when (part) {
-                is UIMessagePart.Text -> part.text
-                is UIMessagePart.Tool -> part.output.filterIsInstance<UIMessagePart.Text>()
-                    .joinToString("\n") { it.text }
-                else -> continue
-            }
-            for (ch in text) {
-                if (ch in '\u4e00'..'\u9fff' || ch in '\u3040'..'\u30ff' || ch in '\uac00'..'\ud7af') {
-                    cjk++
-                } else {
-                    other++
-                }
-            }
-        }
+    val textTokens = estimateTextTokenCount(messages.joinToString("\n\n", transform = UIMessage::toCompactionText))
+    val attachmentTokens = messages.sumOf { message ->
+        message.parts.sumOf(UIMessagePart::estimatedAttachmentTokens)
     }
-    return (cjk / 1.5 + other / 4.0).toInt().coerceAtLeast(0)
+    return (textTokens.toLong() + attachmentTokens).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+}
+
+private fun UIMessagePart.estimatedAttachmentTokens(): Int = when (this) {
+    is UIMessagePart.Image -> 1_024
+    is UIMessagePart.Video -> 2_048
+    is UIMessagePart.Audio -> 1_024
+    is UIMessagePart.Document -> 2_048
+    is UIMessagePart.Tool -> output.sumOf(UIMessagePart::estimatedAttachmentTokens)
+    else -> 0
 }

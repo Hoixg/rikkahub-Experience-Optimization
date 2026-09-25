@@ -32,6 +32,7 @@ class ConversationSession(
     val state: StateFlow<Conversation> = _state.asStateFlow()
     private val initializationMutex = Mutex()
     private val metadataMutex = Mutex()
+    private val persistenceMutex = Mutex()
     @Volatile
     private var initialized = false
     val messageQueue = MessageQueue()
@@ -67,6 +68,10 @@ class ConversationSession(
             persist(updated)
         }
     }
+
+    /** Serialize full conversation writes with narrow checkpoint-column writes. */
+    internal suspend fun <T> withPersistenceLock(block: suspend () -> T): T =
+        persistenceMutex.withLock { block() }
 
     // 失败和取消也必须保存已收到的内容，且保存完成前不能释放生成任务。
     suspend fun finishGeneration(save: suspend (Conversation) -> Unit): Conversation =

@@ -118,6 +118,24 @@ class MessageQueueTest {
     }
 
     @Test
+    fun `failed pre-send input can be restored to the front without losing FIFO order`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("failed"))
+        queue.enqueue(text("later"))
+        val failed = queue.takeNext()!!
+
+        queue.requeueFront(failed)
+        queue.pause()
+
+        assertEquals(listOf(failed.id), queue.state.value.messages.take(1).map { it.id })
+        assertEquals(listOf(text("failed"), text("later")), queue.state.value.messages.map { it.parts })
+        assertNull(queue.takeNext())
+        queue.resume()
+        assertEquals(failed.id, queue.takeNext()!!.id)
+        assertEquals(text("later"), queue.takeNext()!!.parts)
+    }
+
+    @Test
     fun `new input and edits cannot silently resume a paused queue`() {
         val queue = MessageQueue()
         queue.enqueue(text("first"))

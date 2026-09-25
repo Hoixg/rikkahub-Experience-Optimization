@@ -70,6 +70,14 @@ class MessageQueue {
         return next
     }
 
+    /** Restore an undispatched message after a pre-send failure without changing other queue order. */
+    @Synchronized
+    fun requeueFront(message: QueuedMessage) {
+        val current = state.value
+        if (current.messages.any { it.id == message.id }) return
+        mutableState.value = current.copy(messages = listOf(message) + current.messages)
+    }
+
     /** Promote one queued message while preserving the relative order of all other messages. */
     @Synchronized
     fun prioritize(id: Uuid): QueuedMessage? {

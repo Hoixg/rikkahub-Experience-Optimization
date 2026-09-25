@@ -24,8 +24,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.toKotlinLocalDateTime
+import kotlinx.coroutines.withTimeout
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
@@ -86,13 +89,16 @@ import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.getConversationChatModel
 import me.rerere.rikkahub.utils.shouldAutoCompact
 import me.rerere.rikkahub.utils.estimateTokenCount
+import me.rerere.rikkahub.utils.estimateTextTokenCount
 import me.rerere.rikkahub.utils.effectiveContextLength
+import me.rerere.rikkahub.utils.chunkCompactionTexts
+import me.rerere.rikkahub.utils.toCompactionText
+import me.rerere.rikkahub.utils.estimateWindowTokens
+import me.rerere.rikkahub.utils.selectNodesForCompaction
+import me.rerere.rikkahub.utils.priorCheckpointMergeContext
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
-
-private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
-    atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()
 
 private const val TAG = "ChatService"
 
@@ -110,7 +116,10 @@ internal fun backgroundTextGenerationParams(
 
 private const val AUTO_COMPRESS_RETAIN_RATIO = 0.16f
 private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
-private const val MAX_MESSAGES_PER_CHUNK = 256
+private const val AUTO_COMPRESS_INPUT_BUDGET_MAX = 6_000
+private const val AUTO_COMPRESS_CONCURRENCY = 2
+private const val AUTO_COMPRESS_REDUCE_LIMIT = 8
+private const val AUTO_COMPRESS_TIMEOUT_MS = 15 * 60 * 1_000L
 
 internal fun createForkConversation(
     source: Conversation,
@@ -499,6 +508,8 @@ class ChatService(
             conversationId = conversationId,
             keepAliveInBackground = answer,
         ) {
+            var submittedInputId: Uuid? = null
+            var inputPersisted = false
             try {
                 finishInterruptedPendingTools(conversationId)
 
@@ -520,20 +531,24 @@ class ChatService(
                 if (answer && settings.enableAutoCompaction) {
                     autoCompressIfNeeded(
                         conversationId = conversationId,
-                        conversation = currentConversation,
+                        session = session,
+                        pendingParts = processedContent,
                         processingStatus = session.processingStatus,
                     )
                 }
 
                 // 添加消息到列表
                 val conversationBeforeInput = session.state.value
+                val userMessage = UIMessage(
+                    role = MessageRole.USER,
+                    parts = processedContent,
+                )
+                submittedInputId = userMessage.id
                 val newConversation = conversationBeforeInput.copy(
-                    messageNodes = conversationBeforeInput.messageNodes + UIMessage(
-                        role = MessageRole.USER,
-                        parts = processedContent,
-                    ).toMessageNode(),
+                    messageNodes = conversationBeforeInput.messageNodes + userMessage.toMessageNode(),
                 )
                 saveConversation(conversationId, newConversation)
+                inputPersisted = true
                 session.submittingMessage = null
 
                 // 开始补全
@@ -557,7 +572,29 @@ class ChatService(
             } catch (e: Exception) {
                 queued.reply?.completeExceptionally(e)
                 e.printStackTrace()
-                if (e is CancellationException) throw e
+                if (e is CancellationException) {
+                    val inputWasSaved = submittedInputId?.let { messageId ->
+                        session.state.value.messageNodes.any { node ->
+                            node.messages.any { message -> message.id == messageId }
+                        }
+                    } ?: false
+                    // Compaction runs before history insertion; stopping here must not discard typed input.
+                    if (!inputPersisted && !inputWasSaved) {
+                        session.messageQueue.requeueFront(queued)
+                        session.messageQueue.pause()
+                    }
+                    throw e
+                }
+                if (e is ContextCompactionException) {
+                    session.messageQueue.requeueFront(queued)
+                    session.messageQueue.pause()
+                    addError(
+                        e,
+                        conversationId,
+                        title = context.getString(R.string.error_title_compress_context),
+                    )
+                    return@launchGenerationJob
+                }
                 session.messageQueue.pause()
                 addError(e, conversationId, title = context.getString(R.string.error_title_send_message))
             }
@@ -1085,40 +1122,66 @@ class ChatService(
 
     private suspend fun autoCompressIfNeeded(
         conversationId: Uuid,
-        conversation: Conversation,
+        session: ConversationSession,
+        pendingParts: List<UIMessagePart>,
         processingStatus: MutableStateFlow<String?>,
     ) {
-        if (conversation.windowNodes().size <= 2) return
         val settings = settingsStore.settingsFlow.first()
         if (!settings.enableAutoCompaction) return
+        val conversation = session.state.value
         val model = settings.getConversationChatModel(conversation) ?: return
         val windowTokens = model.effectiveContextLength()
-        val usedTokens = estimateConversationTokens(conversation, model)
+        val pendingTokens = estimateTokenCount(
+            listOf(UIMessage(role = MessageRole.USER, parts = pendingParts)),
+        )
+        val usedTokens = conversation.estimateWindowTokens(model) + pendingTokens
         if (!shouldAutoCompact(settings.enableAutoCompaction, usedTokens, windowTokens)) return
 
         val nodesToCompress = autoCompressNodes(conversation, windowTokens)
-        if (nodesToCompress.isEmpty()) return
+        if (nodesToCompress.isEmpty()) {
+            throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
+        }
 
         val compactingStatus = context.getString(R.string.chat_page_compacting_context)
         processingStatus.value = compactingStatus
         try {
-            compressNodesToSummary(
+            val summary = compressNodesToSummary(
                 conversationId = conversationId,
                 conversation = conversation,
                 nodesToCompress = nodesToCompress,
                 settings = settings,
                 model = model,
-            )?.let { summary ->
-                if (summary.isNotBlank()) {
-                    val nodes = conversation.windowNodes()
-                    val checkpoint = CompressionSummary(
-                        content = summary,
-                        messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
-                        boundaryNodeId = nodesToCompress.lastOrNull()?.id ?: nodes.lastOrNull()?.id,
-                    )
-                    saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
-                }
+            )
+            val boundaryNodeId = nodesToCompress.last().id
+            val sourceFingerprint = conversation.compressionSourceFingerprint(boundaryNodeId)
+                ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
+            val checkpoint = CompressionSummary(
+                content = summary,
+                messageCount = nodesToCompress.size + (conversation.activeCompression()?.messageCount ?: 0),
+                boundaryNodeId = boundaryNodeId,
+                sourceFingerprint = sourceFingerprint,
+            )
+            val candidate = conversation.copy(compressionSummaries = listOf(checkpoint))
+            if (candidate.estimateWindowTokens(model) + pendingTokens >= windowTokens) {
+                throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
             }
+            persistCompressionCheckpoint(
+                session = session,
+                checkpoint = checkpoint,
+                expectedFingerprint = sourceFingerprint,
+                model = model,
+                pendingTokens = pendingTokens,
+                windowTokens = windowTokens,
+            )
+        } catch (error: ContextCompactionException) {
+            throw error
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            throw ContextCompactionException(
+                context.getString(R.string.error_compress_context_failed),
+                error,
+            )
         } finally {
             if (processingStatus.value == compactingStatus) {
                 processingStatus.value = null
@@ -1128,42 +1191,68 @@ class ChatService(
 
     private fun autoCompressNodes(conversation: Conversation, windowTokens: Int): List<MessageNode> {
         val nodes = conversation.windowNodes()
-        val keepCount = keepNodeCountByTokenBudget(
+        return selectNodesForCompaction(
             nodes = nodes,
             keepBudgetTokens = (windowTokens * AUTO_COMPRESS_RETAIN_RATIO).toInt(),
         )
-        return nodes.dropLast(keepCount)
     }
 
-    private fun keepNodeCountByTokenBudget(nodes: List<MessageNode>, keepBudgetTokens: Int): Int {
-        var count = 0
-        var tokens = 0
-        for (node in nodes.asReversed()) {
-            val nodeTokens = estimateTokenCount(listOf(node.currentMessage))
-            if (count >= 2 && tokens + nodeTokens > keepBudgetTokens) break
-            tokens += nodeTokens
-            count++
+    private suspend fun persistCompressionCheckpoint(
+        session: ConversationSession,
+        checkpoint: CompressionSummary,
+        expectedFingerprint: String,
+        model: Model,
+        pendingTokens: Int,
+        windowTokens: Int,
+    ) {
+        val boundaryNodeId = checkpoint.boundaryNodeId
+            ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
+
+        fun validationError(conversation: Conversation): String? {
+            if (conversation.compressionSourceFingerprint(boundaryNodeId) != expectedFingerprint) {
+                return context.getString(R.string.error_compress_context_changed)
+            }
+            val candidate = conversation.copy(compressionSummaries = listOf(checkpoint))
+            if (candidate.estimateWindowTokens(model) + pendingTokens >= windowTokens) {
+                return context.getString(R.string.error_compress_context_still_too_large)
+            }
+            return null
         }
-        return count.coerceAtMost(nodes.size)
-    }
 
-    private fun estimateConversationTokens(conversation: Conversation, model: Model): Int {
-        val requestWindow = conversation.requestWindowMessages()
-        val lastAssistant = requestWindow.lastOrNull { it.role == MessageRole.ASSISTANT }
-        val checkpoint = conversation.activeCompression()
-        val usage = lastAssistant?.usage?.promptTokens ?: 0
-        val finishedAt = lastAssistant?.finishedAt ?: lastAssistant?.createdAt
-        val usageUsable = usage > 0 && lastAssistant != null && (
-            checkpoint == null ||
-                (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
-            )
-        return if (usageUsable) usage else estimateTokenCount(requestWindow)
-    }
+        session.withPersistenceLock {
+            val previousSummaries = synchronized(session) {
+                val latest = session.state.value
+                validationError(latest)?.let { throw ContextCompactionException(it) }
+                latest.compressionSummaries.also { previous ->
+                    session.updateConversation(latest.copy(compressionSummaries = listOf(checkpoint)))
+                }
+            }
+            try {
+                conversationRepo.updateCompressionSummaries(session.id, listOf(checkpoint))
+            } catch (error: Exception) {
+                synchronized(session) {
+                    val latest = session.state.value
+                    if (latest.compressionSummaries == listOf(checkpoint)) {
+                        session.updateConversation(latest.copy(compressionSummaries = previousSummaries))
+                    }
+                }
+                throw error
+            }
 
-    private fun splitNodes(nodes: List<MessageNode>): List<List<MessageNode>> {
-        if (nodes.size <= MAX_MESSAGES_PER_CHUNK) return listOf(nodes)
-        val mid = nodes.size / 2
-        return splitNodes(nodes.subList(0, mid)) + splitNodes(nodes.subList(mid, nodes.size))
+            val validationFailure = synchronized(session) {
+                val latest = session.state.value
+                val reason = validationError(latest) ?: return@synchronized null
+                if (latest.compressionSummaries == listOf(checkpoint)) {
+                    session.updateConversation(latest.copy(compressionSummaries = previousSummaries))
+                }
+                reason
+            }
+            if (validationFailure != null) {
+                val persistedSummaries = session.state.value.compressionSummaries
+                conversationRepo.updateCompressionSummaries(session.id, persistedSummaries)
+                throw ContextCompactionException(validationFailure)
+            }
+        }
     }
 
     private suspend fun compressNodesToSummary(
@@ -1172,24 +1261,37 @@ class ChatService(
         nodesToCompress: List<MessageNode>,
         settings: Settings,
         model: Model,
-    ): String? {
-        if (nodesToCompress.isEmpty()) return null
-        return runCatching {
-            val provider = model.findRequestProvider(settings.providers)
-                ?: error("Provider not found")
-            val providerHandler = providerManager.getProviderByType(provider)
-            val priorSummary = conversation.compressionSummaries.lastOrNull()?.content.orEmpty()
-            val additionalContext = if (priorSummary.isNotBlank()) {
-                "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
-            } else ""
+    ): String {
+        if (nodesToCompress.isEmpty()) throw ContextCompactionException(
+            context.getString(R.string.error_compress_context_failed),
+        )
+        return try {
+            withTimeout(AUTO_COMPRESS_TIMEOUT_MS) {
+                val provider = model.findRequestProvider(settings.providers)
+                    ?: throw IllegalStateException("Provider not found")
+                val providerHandler = providerManager.getProviderByType(provider)
+                val inputBudget = (model.effectiveContextLength() - 1_024)
+                    .coerceIn(512, AUTO_COMPRESS_INPUT_BUDGET_MAX)
+                val priorSummary = conversation.activeCompression()?.content.orEmpty()
+                val priorTokens = estimateTextTokenCount(priorSummary)
+                val contentBudget = inputBudget - priorTokens - 512
+                if (contentBudget < 128) {
+                    throw IllegalStateException("The existing checkpoint leaves no room for a safe merge")
+                }
 
-            val summaries = coroutineScope {
-                splitNodes(nodesToCompress).map { nodes ->
-                    async {
-                        val content = nodes.joinToString("\n\n") { it.currentMessage.summaryAsText(maxLength = 2_000) }
+                val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
+                val reduceTarget = contentBudget.coerceAtMost(AUTO_COMPRESS_TARGET_TOKENS).coerceAtLeast(128)
+                val sourceChunks = chunkCompactionTexts(
+                    nodesToCompress.map { it.currentMessage.toCompactionText() },
+                    (inputBudget - 512).coerceAtLeast(1),
+                )
+                val semaphore = Semaphore(AUTO_COMPRESS_CONCURRENCY)
+
+                suspend fun summarize(content: String, targetTokens: Int, additionalContext: String = ""): String =
+                    semaphore.withPermit {
                         val prompt = settings.compressPrompt.applyPlaceholders(
                             "content" to content,
-                            "target_tokens" to AUTO_COMPRESS_TARGET_TOKENS.toString(),
+                            "target_tokens" to targetTokens.toString(),
                             "additional_context" to additionalContext,
                             "locale" to Locale.getDefault().displayName,
                         )
@@ -1198,15 +1300,50 @@ class ChatService(
                             messages = listOf(UIMessage.user(prompt)),
                             params = backgroundTextGenerationParams(model, conversationId),
                         ).message.toText().trim().takeIf { it.isNotBlank() }
-                            ?: error("Empty compression result")
+                            ?: throw IllegalStateException("Empty compression result")
                     }
-                }.awaitAll()
+
+                var summaries = coroutineScope {
+                    sourceChunks.map { chunk -> async { summarize(chunk, mapTarget) } }.awaitAll()
+                }
+                var reducePasses = 0
+                while (summaries.sumOf(::estimateTextTokenCount) > contentBudget) {
+                    if (reducePasses++ >= AUTO_COMPRESS_REDUCE_LIMIT) {
+                        throw IllegalStateException("Could not reduce checkpoint to the model input budget")
+                    }
+                    val groups = chunkCompactionTexts(summaries, (inputBudget - 512).coerceAtLeast(1))
+                    val previousSize = summaries.sumOf(::estimateTextTokenCount)
+                    summaries = coroutineScope {
+                        groups.map { group -> async { summarize(group, reduceTarget) } }.awaitAll()
+                    }
+                    val reducedSize = summaries.sumOf(::estimateTextTokenCount)
+                    if (reducedSize >= previousSize && groups.size >= summaries.size) {
+                        throw IllegalStateException("Checkpoint reduction did not converge")
+                    }
+                }
+
+                summarize(
+                    content = summaries.joinToString("\n\n"),
+                    targetTokens = reduceTarget,
+                    additionalContext = priorCheckpointMergeContext(priorSummary),
+                )
             }
-            summaries.joinToString("\n\n")
-        }.onFailure { error ->
-            if (error is CancellationException) throw error
+        } catch (error: TimeoutCancellationException) {
+            throw ContextCompactionException(
+                context.getString(R.string.error_compress_context_timeout),
+                error,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ContextCompactionException) {
+            throw error
+        } catch (error: Exception) {
             Log.w(TAG, "compressNodesToSummary failed", error)
-        }.getOrNull()
+            throw ContextCompactionException(
+                context.getString(R.string.error_compress_context_failed),
+                error,
+            )
+        }
     }
 
     // ---- 对话状态更新 ----
@@ -1308,23 +1445,26 @@ class ChatService(
     }
 
     suspend fun saveConversation(conversationId: Uuid, conversation: Conversation) {
-        val exists = conversationRepo.existsConversationById(conversation.id)
-        if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
-            return // 新会话且为空时不保存
+        val session = sessionManager.getOrCreate(conversationId)
+        session.withPersistenceLock {
+            val exists = conversationRepo.existsConversationById(conversation.id)
+            if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
+                return@withPersistenceLock // 新会话且为空时不保存
+            }
+
+            val updatedConversation = conversation.copy()
+            updateConversation(conversationId, updatedConversation)
+
+            if (!exists) {
+                conversationRepo.insertConversation(updatedConversation)
+            } else {
+                conversationRepo.updateConversation(updatedConversation)
+            }
+
+            // 删除消息或切换分支也可能解除工具审批阻塞，保存成功后重新检查队列。
+            // 调度器仍会检查当前生成任务、待审批工具、暂停状态及编辑占位。
+            dispatchNextQueuedMessage(conversationId)
         }
-
-        val updatedConversation = conversation.copy()
-        updateConversation(conversationId, updatedConversation)
-
-        if (!exists) {
-            conversationRepo.insertConversation(updatedConversation)
-        } else {
-            conversationRepo.updateConversation(updatedConversation)
-        }
-
-        // 删除消息或切换分支也可能解除工具审批阻塞，保存成功后重新检查队列。
-        // 调度器仍会检查当前生成任务、待审批工具、暂停状态及编辑占位。
-        dispatchNextQueuedMessage(conversationId)
     }
 
     // ---- 翻译消息 ----

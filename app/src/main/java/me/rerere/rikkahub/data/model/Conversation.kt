@@ -10,6 +10,8 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.InstantSerializer
 import me.rerere.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
+import java.security.MessageDigest
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import kotlin.uuid.Uuid
 
@@ -55,7 +57,35 @@ data class Conversation(
     fun activeCompression(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
-        return if (messageNodes.any { it.id == boundaryNodeId }) checkpoint else null
+        if (messageNodes.none { it.id == boundaryNodeId }) return null
+        val expectedFingerprint = checkpoint.sourceFingerprint ?: return checkpoint
+        return checkpoint.takeIf { compressionSourceFingerprint(boundaryNodeId) == expectedFingerprint }
+    }
+
+    /** Hashes the source history, including branch selection, alternates, and attachment references. */
+    fun compressionSourceFingerprint(boundaryNodeId: Uuid): String? {
+        val boundaryIndex = messageNodes.indexOfFirst { it.id == boundaryNodeId }
+        if (boundaryIndex < 0) return null
+        val digest = MessageDigest.getInstance("SHA-256")
+        val delimiter = byteArrayOf(0)
+        fun update(value: String) {
+            digest.update(value.toByteArray(StandardCharsets.UTF_8))
+            digest.update(delimiter)
+        }
+        for (index in 0..boundaryIndex) {
+            val node = messageNodes[index]
+            update(node.id.toString())
+            update(node.selectIndex.toString())
+            node.messages.forEach { message -> update(message.toString()) }
+        }
+        val hash = digest.digest()
+        val hex = "0123456789abcdef"
+        return buildString(hash.size * 2) {
+            hash.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4]).append(hex[value and 0x0f])
+            }
+        }
     }
 
     fun requestWindowMessages(): List<UIMessage> {
@@ -144,6 +174,8 @@ data class CompressionSummary(
     val boundaryNodeId: Uuid? = null,
     @Serializable(with = InstantSerializer::class)
     val createdAt: Instant = Instant.now(),
+    /** Null keeps checkpoints written before source validation compatible. */
+    val sourceFingerprint: String? = null,
 )
 
 @Serializable
