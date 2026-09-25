@@ -417,7 +417,7 @@ fun termuxRunCommandTool(context: Context): Tool = Tool(
             }
         )
     },
-    needsApproval = { true },
+    needsApproval = { TermuxRuntime.approvalRequired },
     execute = { input ->
         val rawCommand = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         val executable = input.jsonObject["executable"]?.jsonPrimitive?.contentOrNull

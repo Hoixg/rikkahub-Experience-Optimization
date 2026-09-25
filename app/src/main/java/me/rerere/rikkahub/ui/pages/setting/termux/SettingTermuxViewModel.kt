@@ -32,7 +32,8 @@ class SettingTermuxViewModel(
         prefs.maxStderrFlow(),
         prefs.aptWrapEnabledFlow(),
         prefs.maxToolStepsFlow(),
-    ) { partial, maxStderr, aptWrap, maxToolSteps ->
+        prefs.approvalRequiredFlow(),
+    ) { partial, maxStderr, aptWrap, maxToolSteps, approvalRequired ->
         TermuxRuntimeConfig(
             commandTimeoutMs  = partial.commandTimeoutMs,
             turnBudgetMs      = partial.turnBudgetMs,
@@ -42,6 +43,7 @@ class SettingTermuxViewModel(
             maxStdoutBytes    = partial.maxStdoutBytes,
             maxStderrBytes    = maxStderr,
             aptWrapEnabled    = aptWrap,
+            approvalRequired = approvalRequired,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -55,6 +57,7 @@ class SettingTermuxViewModel(
             maxStdoutBytes    = TermuxDefaults.DEFAULT_MAX_STDOUT,
             maxStderrBytes    = TermuxDefaults.DEFAULT_MAX_STDERR,
             aptWrapEnabled    = TermuxDefaults.DEFAULT_APT_WRAP_ENABLED,
+            approvalRequired = TermuxDefaults.DEFAULT_APPROVAL_REQUIRED,
         ),
     )
 
@@ -94,6 +97,10 @@ class SettingTermuxViewModel(
 
     fun setAptWrapEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setAptWrapEnabled(enabled) }
+    }
+
+    fun setApprovalRequired(required: Boolean) {
+        viewModelScope.launch { prefs.setApprovalRequired(required) }
     }
 
     // Private intermediate holder to avoid 7-flow combine vararg.

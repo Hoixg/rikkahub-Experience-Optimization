@@ -329,7 +329,7 @@ fun termuxSessionStartTool(context: Context): Tool = Tool(
             put("rows", buildJsonObject { put("type", "integer"); put("description", "Terminal height (default $DEFAULT_ROWS).") })
         })
     },
-    needsApproval = { true },
+    needsApproval = { TermuxRuntime.approvalRequired },
     execute = { input ->
         preflight(context)?.let { return@Tool it }
         ensureTmux(context)?.let { err ->
@@ -402,7 +402,7 @@ fun termuxSessionSendTool(context: Context): Tool = Tool(
             put("timeout_seconds", buildJsonObject { put("type", "integer"); put("description", "Default $DEFAULT_TIMEOUT_S, max $MAX_TIMEOUT_S.") })
         })
     },
-    needsApproval = { true },
+    needsApproval = { TermuxRuntime.approvalRequired },
     execute = { input ->
         preflight(context)?.let { return@Tool it }
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull
@@ -492,7 +492,7 @@ fun termuxSessionKillTool(context: Context): Tool = Tool(
             put("session_id", buildJsonObject { put("type", "string"); put("description", "Session id to kill.") })
         })
     },
-    needsApproval = { true },
+    needsApproval = { TermuxRuntime.approvalRequired },
     execute = { input ->
         preflight(context)?.let { return@Tool it }
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull

@@ -51,6 +51,10 @@ object TermuxDefaults {
     /** ON by default — preserves the prior behavior for existing users. */
     const val DEFAULT_APT_WRAP_ENABLED = true
 
+    // --- tool approval default -------------------------------------------------------------
+    /** Keep explicit approval enabled unless the user opts into unattended Termux commands. */
+    const val DEFAULT_APPROVAL_REQUIRED = true
+
     // --- Max per-call timeout_seconds ceiling (LLM-exposed arg) ---------------------------
     /** Raised from 300 to 600 s so it aligns with the configurable command timeout ceiling. */
     const val MAX_COMMAND_TIMEOUT_SECONDS = 600

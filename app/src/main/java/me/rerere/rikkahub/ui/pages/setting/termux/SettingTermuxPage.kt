@@ -46,13 +46,14 @@ import me.rerere.rikkahub.ui.theme.CustomColors
 import org.koin.androidx.compose.koinViewModel
 
 /**
- * Settings -> Termux. Four sections:
+ * Settings -> Termux. Five sections:
  *
  *  1. Status — integration indicators with tap actions (Termux installed, RUN_COMMAND
  *     permission request, Open Termux, verify smoke test).
- *  2. Timeouts — command timeout, per-turn budget (all tools), verify smoke-test timeout.
- *  3. Defaults & limits — working directory, stdout/stderr caps, apt-wrap toggle.
- *  4. Help — expandable setup instructions for allow-external-apps=true.
+ *  2. Approval — require a user confirmation for every Termux command/session mutation.
+ *  3. Timeouts — command timeout, per-turn budget (all tools), verify smoke-test timeout.
+ *  4. Defaults & limits — working directory, stdout/stderr caps, apt-wrap toggle.
+ *  5. Help — expandable setup instructions for allow-external-apps=true.
  */
 @Composable
 fun SettingTermuxPage(
@@ -231,7 +232,23 @@ fun SettingTermuxPage(
                 )
             }
 
-            // Section 2: Timeouts
+            // Section 2: Approval
+            CardGroup(
+                title = { Text(stringResource(R.string.setting_termux_section_approval)) },
+            ) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.setting_termux_approval_required)) },
+                    supportingContent = { Text(stringResource(R.string.setting_termux_approval_required_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = config.approvalRequired,
+                            onCheckedChange = vm::setApprovalRequired,
+                        )
+                    },
+                )
+            }
+
+            // Section 3: Timeouts
             CardGroup(
                 title = { Text(stringResource(R.string.setting_termux_section_timeouts)) },
             ) {

@@ -16,4 +16,5 @@ object TermuxRuntime {
     @Volatile var maxStdoutBytes: Int     = TermuxDefaults.DEFAULT_MAX_STDOUT
     @Volatile var maxStderrBytes: Int     = TermuxDefaults.DEFAULT_MAX_STDERR
     @Volatile var aptWrapEnabled: Boolean = TermuxDefaults.DEFAULT_APT_WRAP_ENABLED
+    @Volatile var approvalRequired: Boolean = TermuxDefaults.DEFAULT_APPROVAL_REQUIRED
 }

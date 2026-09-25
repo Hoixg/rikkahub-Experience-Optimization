@@ -45,6 +45,7 @@ class TermuxPreferences(private val context: Context) {
     private val maxStdoutKey      = intPreferencesKey("max_stdout_bytes")
     private val maxStderrKey      = intPreferencesKey("max_stderr_bytes")
     private val aptWrapKey        = booleanPreferencesKey("apt_wrap_enabled")
+    private val approvalRequiredKey = booleanPreferencesKey("approval_required")
     private val lastVerifiedMsKey = longPreferencesKey("last_verified_ms")
 
     init {
@@ -70,6 +71,7 @@ class TermuxPreferences(private val context: Context) {
             maxStdoutFlow() to { value: Int -> TermuxRuntime.maxStdoutBytes = value },
             maxStderrFlow() to { value: Int -> TermuxRuntime.maxStderrBytes = value },
             aptWrapEnabledFlow() to { value: Boolean -> TermuxRuntime.aptWrapEnabled = value },
+            approvalRequiredFlow() to { value: Boolean -> TermuxRuntime.approvalRequired = value },
         ).forEach { (flow, apply) ->
             scope.launch {
                 flow.distinctUntilChanged().collect { value ->
@@ -87,6 +89,7 @@ class TermuxPreferences(private val context: Context) {
         TermuxRuntime.maxStdoutBytes = config.maxStdoutBytes
         TermuxRuntime.maxStderrBytes = config.maxStderrBytes
         TermuxRuntime.aptWrapEnabled = config.aptWrapEnabled
+        TermuxRuntime.approvalRequired = config.approvalRequired
         ToolRuntimeLimits.turnBudgetMs = config.turnBudgetMs
         ToolRuntimeLimits.maxToolSteps = config.maxToolSteps
     }
@@ -139,6 +142,10 @@ class TermuxPreferences(private val context: Context) {
         prefs[aptWrapKey] ?: TermuxDefaults.DEFAULT_APT_WRAP_ENABLED
     }
 
+    fun approvalRequiredFlow(): Flow<Boolean> = store.data.map { prefs ->
+        prefs[approvalRequiredKey] ?: TermuxDefaults.DEFAULT_APPROVAL_REQUIRED
+    }
+
     // --- Suspend writers (clamped before persist) -----------------------------------------
 
     suspend fun setCommandTimeoutMs(ms: Long) {
@@ -173,6 +180,10 @@ class TermuxPreferences(private val context: Context) {
         store.edit { it[aptWrapKey] = enabled }
     }
 
+    suspend fun setApprovalRequired(required: Boolean) {
+        store.edit { it[approvalRequiredKey] = required }
+    }
+
     suspend fun setLastVerifiedMs(ms: Long) {
         store.edit { it[lastVerifiedMsKey] = ms }
     }
@@ -192,6 +203,7 @@ class TermuxPreferences(private val context: Context) {
             maxStdoutBytes     = TermuxDefaults.clampMaxStdout(prefs[maxStdoutKey]              ?: TermuxDefaults.DEFAULT_MAX_STDOUT),
             maxStderrBytes     = TermuxDefaults.clampMaxStderr(prefs[maxStderrKey]              ?: TermuxDefaults.DEFAULT_MAX_STDERR),
             aptWrapEnabled     = prefs[aptWrapKey]                                              ?: TermuxDefaults.DEFAULT_APT_WRAP_ENABLED,
+            approvalRequired  = prefs[approvalRequiredKey]                                    ?: TermuxDefaults.DEFAULT_APPROVAL_REQUIRED,
             lastVerifiedMs     = prefs[lastVerifiedMsKey]                                        ?: 0L,
         )
     }
@@ -201,7 +213,7 @@ class TermuxPreferences(private val context: Context) {
 
 /**
  * Immutable snapshot of all Termux preferences, used by the ViewModel to expose a single
- * combined state flow instead of seven separate ones.
+ * combined state flow instead of separate ones.
  */
 data class TermuxRuntimeConfig(
     val commandTimeoutMs: Long,
@@ -212,5 +224,6 @@ data class TermuxRuntimeConfig(
     val maxStdoutBytes: Int,
     val maxStderrBytes: Int,
     val aptWrapEnabled: Boolean,
+    val approvalRequired: Boolean = TermuxDefaults.DEFAULT_APPROVAL_REQUIRED,
     val lastVerifiedMs: Long = 0L,
 )
