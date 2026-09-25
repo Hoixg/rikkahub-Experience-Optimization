@@ -518,7 +518,11 @@ class ChatService(
 
                 // 对齐 YuiHub：普通发送前压缩旧上下文，新输入始终保留为近期消息。
                 if (answer && settings.enableAutoCompaction) {
-                    autoCompressIfNeeded(conversationId, currentConversation)
+                    autoCompressIfNeeded(
+                        conversationId = conversationId,
+                        conversation = currentConversation,
+                        processingStatus = session.processingStatus,
+                    )
                 }
 
                 // 添加消息到列表
@@ -1082,6 +1086,7 @@ class ChatService(
     private suspend fun autoCompressIfNeeded(
         conversationId: Uuid,
         conversation: Conversation,
+        processingStatus: MutableStateFlow<String?>,
     ) {
         if (conversation.windowNodes().size <= 2) return
         val settings = settingsStore.settingsFlow.first()
@@ -1094,21 +1099,29 @@ class ChatService(
         val nodesToCompress = autoCompressNodes(conversation, windowTokens)
         if (nodesToCompress.isEmpty()) return
 
-        compressNodesToSummary(
-            conversationId = conversationId,
-            conversation = conversation,
-            nodesToCompress = nodesToCompress,
-            settings = settings,
-            model = model,
-        )?.let { summary ->
-            if (summary.isNotBlank()) {
-                val nodes = conversation.windowNodes()
-                val checkpoint = CompressionSummary(
-                    content = summary,
-                    messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
-                    boundaryNodeId = nodesToCompress.lastOrNull()?.id ?: nodes.lastOrNull()?.id,
-                )
-                saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
+        val compactingStatus = context.getString(R.string.chat_page_compacting_context)
+        processingStatus.value = compactingStatus
+        try {
+            compressNodesToSummary(
+                conversationId = conversationId,
+                conversation = conversation,
+                nodesToCompress = nodesToCompress,
+                settings = settings,
+                model = model,
+            )?.let { summary ->
+                if (summary.isNotBlank()) {
+                    val nodes = conversation.windowNodes()
+                    val checkpoint = CompressionSummary(
+                        content = summary,
+                        messageCount = nodesToCompress.size + conversation.compressionSummaries.sumOf { it.messageCount },
+                        boundaryNodeId = nodesToCompress.lastOrNull()?.id ?: nodes.lastOrNull()?.id,
+                    )
+                    saveConversation(conversationId, conversation.copy(compressionSummaries = listOf(checkpoint)))
+                }
+            }
+        } finally {
+            if (processingStatus.value == compactingStatus) {
+                processingStatus.value = null
             }
         }
     }
