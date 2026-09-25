@@ -1599,4 +1599,10 @@
   <string name="scheduled_job_collapse">收起</string>
   <string name="scheduled_job_completion_notification_message">AI 完成后的通知内容（可选）</string>
   <string name="scheduled_job_completion_notification_hint">留空时显示 AI 回复摘要；填写后以自定义内容替代摘要。最多 60 字，窄屏通知仍可能被系统折叠截断。</string>
+  <string name="safe_mode_enter_app">进入应用</string>
+  <string name="theme_name_claude">Claude</string>
+  <string name="workspace_terminal_tab">终端 %1$d</string>
+  <string name="workspace_terminal_new_tab">新建终端标签页</string>
+  <string name="workspace_terminal_close_tab">关闭终端 %1$d</string>
+  <string name="workspace_terminal_no_tabs">没有打开的终端标签页</string>
 </resources>
