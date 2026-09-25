@@ -59,14 +59,7 @@ fun AssistantDetailPage(id: String) {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = {
-                    Text(
-                        text = assistant.name.ifBlank {
-                            stringResource(R.string.assistant_page_default_assistant)
-                        },
-                        maxLines = 1,
-                    )
-                },
+                title = {},
                 navigationIcon = {
                     BackButton()
                 },
