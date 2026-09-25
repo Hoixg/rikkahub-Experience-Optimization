@@ -10,8 +10,8 @@ import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.service.ChatNotificationManager
 import me.rerere.rikkahub.service.ChatService
-import me.rerere.rikkahub.service.scheduled.ScheduledTaskManager
-import me.rerere.rikkahub.service.scheduled.ScheduledTaskWorker
+import me.rerere.rikkahub.service.scheduled.ScheduledJobManager
+import me.rerere.rikkahub.service.scheduled.ScheduledJobWorker
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import me.rerere.rikkahub.utils.EmojiData
 import me.rerere.rikkahub.utils.EmojiUtils
@@ -23,7 +23,7 @@ import org.koin.dsl.module
 import org.koin.androidx.workmanager.dsl.worker
 
 val appModule = module {
-    worker { params -> ScheduledTaskWorker(params.get(), params.get()) }
+    worker { params -> ScheduledJobWorker(params.get(), params.get()) }
 
     single<Json> { JsonInstant }
 
@@ -73,7 +73,7 @@ val appModule = module {
             appScope = get(),
             eventBus = get(),
             settingsStore = get(),
-            scheduledTaskDao = get(),
+            scheduledJobDao = get(),
         )
     }
 
@@ -87,6 +87,7 @@ val appModule = module {
             settingsStore = get(),
             skillManager = get(),
             workspaceRepository = get(),
+            saveScheduledJob = { job -> get<ScheduledJobManager>().save(job) },
         )
     }
 
@@ -107,17 +108,20 @@ val appModule = module {
             filesManager = get(),
             workspaceRepository = get(),
             folderRepository = get(),
-            scheduledTaskDao = get(),
+            scheduledJobDao = get(),
         )
     }
 
     single {
-        ScheduledTaskManager(
+        ScheduledJobManager(
             context = get(),
             appScope = get(),
             dao = get(),
             chatService = get(),
             eventBus = get(),
+            settingsStore = get(),
+            localTools = get(),
+            json = get(),
         )
     }
 }

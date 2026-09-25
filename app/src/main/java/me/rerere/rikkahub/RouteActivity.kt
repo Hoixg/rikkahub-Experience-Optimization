@@ -120,8 +120,9 @@ import me.rerere.rikkahub.ui.pages.setting.SettingProviderDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSearchPage
-import me.rerere.rikkahub.ui.pages.setting.ScheduledTasksPage
-import me.rerere.rikkahub.ui.pages.setting.ScheduledTaskEditorPage
+import me.rerere.rikkahub.ui.pages.setting.ScheduledJobsPage
+import me.rerere.rikkahub.ui.pages.setting.ScheduledJobEditorPage
+import me.rerere.rikkahub.ui.pages.setting.ScheduledJobHistoryPage
 import me.rerere.rikkahub.ui.pages.setting.SettingSpeechPage
 import me.rerere.rikkahub.ui.pages.setting.termux.SettingTermuxPage
 
@@ -229,7 +230,7 @@ class RouteActivity : ComponentActivity() {
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty(),
             )
             else -> if (intent.getBooleanExtra("openScheduledTasks", false)) {
-                Screen.ScheduledTasks
+                Screen.ScheduledJobs
             } else intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
@@ -419,12 +420,16 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesPage()
                             }
 
-                            entry<Screen.ScheduledTasks> {
-                                ScheduledTasksPage()
+                            entry<Screen.ScheduledJobs> {
+                                ScheduledJobsPage()
                             }
 
-                            entry<Screen.ScheduledTaskEditor> { key ->
-                                ScheduledTaskEditorPage(key.taskId)
+                            entry<Screen.ScheduledJobEditor> { key ->
+                                ScheduledJobEditorPage(key.jobId)
+                            }
+
+                            entry<Screen.ScheduledJobHistory> { key ->
+                                ScheduledJobHistoryPage(key.jobId)
                             }
 
                             entry<Screen.SettingPreferencesTheme> {
@@ -663,10 +668,13 @@ sealed interface Screen : NavKey {
     data object SettingPreferences : Screen
 
     @Serializable
-    data object ScheduledTasks : Screen
+    data object ScheduledJobs : Screen
 
     @Serializable
-    data class ScheduledTaskEditor(val taskId: String? = null) : Screen
+    data class ScheduledJobEditor(val jobId: String? = null) : Screen
+
+    @Serializable
+    data class ScheduledJobHistory(val jobId: String) : Screen
 
     @Serializable
     data object SettingPreferencesTheme : Screen

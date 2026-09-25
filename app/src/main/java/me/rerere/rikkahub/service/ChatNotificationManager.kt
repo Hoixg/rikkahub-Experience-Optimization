@@ -20,7 +20,7 @@ import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.data.datastore.SettingsStore
-import me.rerere.rikkahub.data.db.dao.ScheduledTaskDao
+import me.rerere.rikkahub.data.db.dao.ScheduledJobDao
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.cancelNotification
@@ -41,7 +41,7 @@ class ChatNotificationManager(
     private val appScope: AppScope,
     eventBus: AppEventBus,
     private val settingsStore: SettingsStore,
-    private val scheduledTaskDao: ScheduledTaskDao,
+    private val scheduledJobDao: ScheduledJobDao,
 ) {
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
@@ -100,7 +100,7 @@ class ChatNotificationManager(
 
     private suspend fun isScheduledConversation(conversationId: Uuid): Boolean =
         scheduledConversationCache[conversationId] ?: run {
-            val scheduled = scheduledTaskDao.getRunByConversation(conversationId.toString()) != null
+            val scheduled = scheduledJobDao.getRunByConversation(conversationId.toString()) != null
             scheduledConversationCache[conversationId] = scheduled
             scheduled
         }

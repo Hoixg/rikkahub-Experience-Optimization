@@ -96,7 +96,7 @@ val dataSourceModule = module {
     }
 
     single {
-        get<AppDatabase>().scheduledTaskDao()
+        get<AppDatabase>().scheduledJobDao()
     }
 
     single {

@@ -62,7 +62,7 @@ import me.rerere.rikkahub.data.ai.transformers.TimeReminderTransformer
 import me.rerere.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
-import me.rerere.rikkahub.data.db.dao.ScheduledTaskDao
+import me.rerere.rikkahub.data.db.dao.ScheduledJobDao
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -184,7 +184,7 @@ class ChatService(
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
-    private val scheduledTaskDao: ScheduledTaskDao,
+    private val scheduledJobDao: ScheduledJobDao,
 ) {
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
@@ -688,7 +688,7 @@ class ChatService(
         messageRange: ClosedRange<Int>? = null
     ) {
         val initialConversation = getConversationFlow(conversationId).value
-        val scheduledRun = scheduledTaskDao.getRunByConversation(conversationId.toString())
+        val scheduledRun = scheduledJobDao.getRunByConversation(conversationId.toString())
         val settings = if (scheduledRun != null) settingsStore.settingsFlowRaw.first()
             else settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(initialConversation.assistantId)
@@ -737,6 +737,7 @@ class ChatService(
                     assistant = assistant,
                     model = model,
                     workspaceCwd = conversation.workspaceCwd,
+                    includeScheduledJobTool = scheduledRun == null,
                 )
             } catch (error: InvalidMcpServerNamesException) {
                 sessionManager.get(conversationId)?.messageQueue?.pause()
@@ -828,7 +829,7 @@ class ChatService(
         }.onSuccess {
             val finalConversation = getConversationFlow(conversationId).value
 
-            if (scheduledTaskDao.getRunByConversation(conversationId.toString()) != null) return@onSuccess
+            if (scheduledJobDao.getRunByConversation(conversationId.toString()) != null) return@onSuccess
 
             sessionManager.launchWithSession(conversationId) {
                 generateTitle(conversationId, finalConversation)

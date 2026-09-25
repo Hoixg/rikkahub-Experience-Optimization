@@ -62,6 +62,7 @@ import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.CalendarAdd01
+import me.rerere.hugeicons.stroke.CalendarMinus01
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Time02
 import me.rerere.hugeicons.stroke.VolumeHigh
@@ -561,6 +562,57 @@ object CalendarCreateToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         val eventTitle = context.arguments.getStringContent("title") ?: ""
         return stringResource(R.string.chat_message_tool_calendar_create, eventTitle)
+    }
+}
+
+object CalendarDeleteToolUI : ToolUIRenderer {
+    override val toolName: String = "calendar_delete"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.CalendarMinus01
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val eventTitle = context.content.getStringContent("title")
+            ?: context.arguments.getStringContent("expected_title")
+            ?: context.arguments.getStringContent("event_id").orEmpty()
+        return stringResource(R.string.chat_message_tool_calendar_delete, eventTitle)
+    }
+}
+
+object ScheduledJobCreateToolUI : ToolUIRenderer {
+    override val toolName: String = "create_scheduled_task"
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.CalendarAdd01
+
+    @Composable
+    override fun title(context: ToolUIContext): String = stringResource(
+        R.string.chat_message_tool_scheduled_task_create,
+        context.arguments.getStringContent("name").orEmpty(),
+    )
+
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.arguments.getStringContent("schedule_type") != null
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val mode = when (context.arguments.getStringContent("mode")) {
+            "direct" -> stringResource(R.string.scheduled_job_mode_direct)
+            "reminder" -> stringResource(R.string.scheduled_task_mode_reminder)
+            else -> stringResource(R.string.scheduled_task_mode_ai)
+        }
+        val schedule = when (context.arguments.getStringContent("schedule_type")) {
+            "once" -> context.arguments.getStringContent("run_at").orEmpty()
+            "cron" -> context.arguments.getStringContent("cron_expression").orEmpty()
+            else -> ""
+        }
+        val timezone = context.arguments.getStringContent("timezone").orEmpty()
+        Text(
+            text = stringResource(R.string.chat_message_tool_scheduled_task_summary, mode, schedule, timezone),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
