@@ -92,7 +92,6 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
-import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.message.ChatMessage
@@ -213,9 +212,6 @@ private fun ChatListNormal(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     onWorkspacePathClick: (WorkspacePathReference) -> Unit = {},
 ) {
-    val activeCheckpoint = remember(conversation.compressionSummaries, conversation.messageNodes) {
-        conversation.activeCompression()
-    }
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
     var isRecentScroll by remember { mutableStateOf(false) }
@@ -320,15 +316,6 @@ private fun ChatListNormal(
                     .hazeSource(state = hazeState)
                     .padding(top = innerPadding.calculateTopPadding()),
             ) {
-                if (activeCheckpoint != null) {
-                    item(
-                        key = "Checkpoint-${activeCheckpoint.id}",
-                        contentType = "CompressionCheckpoint",
-                    ) {
-                        CompressionCheckpointCard(checkpoint = activeCheckpoint)
-                    }
-                }
-
                 itemsIndexed(
                 items = conversation.messageNodes,
                 key = { index, item -> item.id },
@@ -757,47 +744,6 @@ private fun ChatSuggestionsRow(
                 Text(
                     text = suggestion,
                     style = MaterialTheme.typography.bodySmall
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun CompressionCheckpointCard(checkpoint: CompressionSummary) {
-    var expanded by rememberSaveable(checkpoint.id) { mutableStateOf(false) }
-
-    Surface(
-        onClick = { expanded = !expanded },
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.chat_checkpoint_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = stringResource(R.string.chat_checkpoint_message_count, checkpoint.messageCount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = checkpoint.content,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

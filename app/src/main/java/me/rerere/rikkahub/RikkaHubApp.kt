@@ -32,9 +32,6 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
-import me.rerere.rikkahub.service.scheduled.SCHEDULED_JOB_PROGRESS_CHANNEL_ID
-import me.rerere.rikkahub.service.scheduled.SCHEDULED_JOB_RESULT_CHANNEL_ID
-import me.rerere.rikkahub.service.scheduled.ScheduledJobManager
 import me.rerere.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -69,7 +66,6 @@ class RikkaHubApp : Application() {
             workManagerFactory()
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
-        get<ScheduledJobManager>()
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
 
@@ -179,19 +175,6 @@ class RikkaHubApp : Application() {
             .setVibrationEnabled(false)
             .build()
         notificationManager.createNotificationChannel(chatLiveUpdateChannel)
-
-        notificationManager.createNotificationChannel(
-            NotificationChannelCompat.Builder(
-                SCHEDULED_JOB_RESULT_CHANNEL_ID,
-                NotificationManagerCompat.IMPORTANCE_HIGH,
-            ).setName(getString(R.string.scheduled_task_notification_channel)).build()
-        )
-        notificationManager.createNotificationChannel(
-            NotificationChannelCompat.Builder(
-                SCHEDULED_JOB_PROGRESS_CHANNEL_ID,
-                NotificationManagerCompat.IMPORTANCE_LOW,
-            ).setName(getString(R.string.scheduled_task_progress_channel)).build()
-        )
 
     }
 

@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.utils
 
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.MessageNode
@@ -121,6 +122,30 @@ internal fun selectNodesForCompaction(nodes: List<MessageNode>, keepBudgetTokens
     }
     // A triggered compact must always include at least one node, even for a one-message conversation.
     return nodes.dropLast(keptCount.coerceAtMost((nodes.size - 1).coerceAtLeast(0)))
+}
+
+/** Selects an old prefix while retaining the newest user turn and keeping its messages together. */
+internal fun selectCompactionPrefixKeepingLatestTurn(
+    nodes: List<MessageNode>,
+    keepBudgetTokens: Int,
+): List<MessageNode> {
+    if (nodes.isEmpty()) return emptyList()
+    val latestUserIndex = nodes.indexOfLast { it.currentMessage.role == MessageRole.USER }
+    val minimumKeepStart = if (latestUserIndex >= 0) latestUserIndex else nodes.lastIndex
+    var keepStart = nodes.size
+    var keptTokens = 0
+
+    for (index in nodes.lastIndex downTo minimumKeepStart) {
+        val nodeTokens = estimateTokenCount(listOf(nodes[index].currentMessage))
+        if (keepStart < nodes.size && keptTokens + nodeTokens > keepBudgetTokens) break
+        keepStart = index
+        keptTokens += nodeTokens
+    }
+
+    val alignedKeepStart = (keepStart downTo minimumKeepStart)
+        .firstOrNull { nodes[it].currentMessage.role == MessageRole.USER }
+        ?: minimumKeepStart
+    return nodes.take(alignedKeepStart)
 }
 
 internal fun priorCheckpointMergeContext(summary: String): String = if (summary.isBlank()) "" else

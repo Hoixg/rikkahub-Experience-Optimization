@@ -579,43 +579,6 @@ object CalendarDeleteToolUI : ToolUIRenderer {
     }
 }
 
-object ScheduledJobCreateToolUI : ToolUIRenderer {
-    override val toolName: String = "create_scheduled_task"
-
-    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.CalendarAdd01
-
-    @Composable
-    override fun title(context: ToolUIContext): String = stringResource(
-        R.string.chat_message_tool_scheduled_task_create,
-        context.arguments.getStringContent("name").orEmpty(),
-    )
-
-    override fun hasSummary(context: ToolUIContext): Boolean =
-        context.arguments.getStringContent("schedule_type") != null
-
-    @Composable
-    override fun Summary(context: ToolUIContext) {
-        val mode = when (context.arguments.getStringContent("mode")) {
-            "direct" -> stringResource(R.string.scheduled_job_mode_direct)
-            "reminder" -> stringResource(R.string.scheduled_task_mode_reminder)
-            else -> stringResource(R.string.scheduled_task_mode_ai)
-        }
-        val schedule = when (context.arguments.getStringContent("schedule_type")) {
-            "once" -> context.arguments.getStringContent("run_at").orEmpty()
-            "cron" -> context.arguments.getStringContent("cron_expression").orEmpty()
-            else -> ""
-        }
-        val timezone = context.arguments.getStringContent("timezone").orEmpty()
-        Text(
-            text = stringResource(R.string.chat_message_tool_scheduled_task_summary, mode, schedule, timezone),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 @Composable
 private fun ScreenTimePreview(content: JsonElement, apps: List<JsonElement>) {
     val totalMinutes = content.jsonObjectOrNull?.get("total_minutes")

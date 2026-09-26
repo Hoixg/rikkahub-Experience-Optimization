@@ -14,7 +14,6 @@
     android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
     tools:ignore="ScopedStorage" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -133,16 +132,6 @@
       android:name="androidx.work.impl.foreground.SystemForegroundService"
       android:foregroundServiceType="dataSync"
       tools:node="merge" />
-    <receiver
-      android:name=".service.scheduled.ScheduledJobReceiver"
-      android:exported="false">
-      <intent-filter>
-        <action android:name="android.intent.action.BOOT_COMPLETED" />
-        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-        <action android:name="android.intent.action.TIME_SET" />
-        <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-      </intent-filter>
-    </receiver>
     <provider
       android:name="androidx.core.content.FileProvider"
       android:authorities="${applicationId}.fileprovider"

@@ -41,6 +41,7 @@ internal object AppDatabaseFactory {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     if (name == SQLiteConfiguration.DATABASE_NAME) {
                         cleanupLegacyScheduledTasks(context, db)
+                        cancelRemovedScheduledJobs(context, db)
                     }
                     val dictDir = SimpleDictManager.extractDict(context)
                     val cursor = db.query("SELECT jieba_dict(?)", arrayOf(dictDir.absolutePath))
@@ -121,5 +122,45 @@ internal object AppDatabaseFactory {
             }
         }.getOrDefault(false)
         if (!remaining) runCatching { db.execSQL("DROP TABLE IF EXISTS legacy_scheduled_task_cleanup") }
+    }
+
+    /** Cancel pending work from the removed scheduled-jobs feature without deleting its stored history. */
+    private fun cancelRemovedScheduledJobs(context: Context, db: SupportSQLiteDatabase) {
+        val ids = runCatching {
+            db.query("SELECT id FROM scheduled_jobs").use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+            }
+        }.getOrDefault(emptyList())
+        if (ids.isEmpty()) return
+
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        val workManager = runCatching { WorkManager.getInstance(context) }.getOrNull()
+        ids.forEach { id ->
+            val intent = Intent().apply {
+                component = ComponentName(
+                    context.packageName,
+                    "me.rerere.rikkahub.service.scheduled.ScheduledJobReceiver",
+                )
+                action = "me.rerere.rikkahub.action.FIRE_SCHEDULED_JOB"
+                data = Uri.parse("rikkahub://scheduled-job/${Uri.encode(id)}")
+            }
+            runCatching {
+                PendingIntent.getBroadcast(
+                    context,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+                )?.let { pendingIntent ->
+                    alarmManager.cancel(pendingIntent)
+                    pendingIntent.cancel()
+                }
+            }
+            runCatching {
+                val manager = checkNotNull(workManager) { "WorkManager is not initialized" }
+                manager.cancelUniqueWork("scheduled_job_$id")
+                manager.cancelUniqueWork("scheduled_job_${id}_manual")
+                manager.cancelAllWorkByTag("scheduled_job:$id")
+            }
+        }
     }
 }

@@ -100,7 +100,6 @@ object ToolUIRegistry {
         CalendarQueryToolUI,
         CalendarCreateToolUI,
         CalendarDeleteToolUI,
-        ScheduledJobCreateToolUI,
         UseSkillToolUI,
         RecentChatsToolUI,
         ConversationSearchToolUI,

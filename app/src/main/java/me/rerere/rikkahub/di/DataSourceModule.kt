@@ -96,10 +96,6 @@ val dataSourceModule = module {
     }
 
     single {
-        get<AppDatabase>().scheduledJobDao()
-    }
-
-    single {
         MessageFtsManager(get())
     }
 

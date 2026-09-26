@@ -20,7 +20,6 @@ import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.data.datastore.SettingsStore
-import me.rerere.rikkahub.data.db.dao.ScheduledJobDao
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.utils.cancelNotification
@@ -41,11 +40,9 @@ class ChatNotificationManager(
     private val appScope: AppScope,
     eventBus: AppEventBus,
     private val settingsStore: SettingsStore,
-    private val scheduledJobDao: ScheduledJobDao,
 ) {
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
-    private val scheduledConversationCache = ConcurrentHashMap<Uuid, Boolean>()
 
     init {
         // ProcessLifecycleOwner 要求在主线程注册观察者
@@ -72,7 +69,6 @@ class ChatNotificationManager(
     }
 
     private suspend fun handleGenerationUpdate(event: AppEvent.ChatGenerationUpdate) {
-        if (isScheduledConversation(event.conversationId)) return
         if (isForeground.value) return
         val displaySetting = settingsStore.settingsFlow.value.displaySetting
         if (!displaySetting.enableNotificationOnMessageGeneration) return
@@ -89,21 +85,11 @@ class ChatNotificationManager(
     private suspend fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
         cancelLiveUpdateNotification(event.conversationId)
 
-        val scheduled = isScheduledConversation(event.conversationId)
-        scheduledConversationCache.remove(event.conversationId)
         val contentPreview = event.contentPreview ?: return
-        if (scheduled) return
         if (isForeground.value) return
         if (!settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration) return
         sendGenerationDoneNotification(event.conversationId, event.senderName, contentPreview)
     }
-
-    private suspend fun isScheduledConversation(conversationId: Uuid): Boolean =
-        scheduledConversationCache[conversationId] ?: run {
-            val scheduled = scheduledJobDao.getRunByConversation(conversationId.toString()) != null
-            scheduledConversationCache[conversationId] = scheduled
-            scheduled
-        }
 
     private fun sendGenerationDoneNotification(
         conversationId: Uuid,

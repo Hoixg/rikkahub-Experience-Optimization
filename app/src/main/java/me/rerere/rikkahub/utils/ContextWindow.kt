@@ -56,18 +56,27 @@ private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.Loca
     atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()
 
 fun Conversation.estimateWindowTokens(model: Model?): Int {
-    val window = requestWindowMessages()
-    val lastAssistant = window.lastOrNull { it.role == MessageRole.ASSISTANT }
-    val usageTokens = lastAssistant?.usage?.promptTokens ?: 0
-    val checkpoint = activeCompression()
+    val requestContext = requestContextForGeneration()
+    val window = requestContext.messages
+    val lastAssistant = window.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT }
+    val usage = lastAssistant?.usage
+    val usageTokens = usage?.promptTokens ?: 0
+    val checkpoint = activeCompressionForRequest()
     val finishedAt = lastAssistant?.finishedAt ?: lastAssistant?.createdAt
     val usageUsable = usageTokens > 0 && lastAssistant != null && model != null &&
         lastAssistant.modelId == model.id &&
+        window.lastOrNull()?.id == lastAssistant.id &&
         (
             checkpoint == null ||
                 (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
             )
-    return if (usageUsable) usageTokens else estimateTokenCount(window)
+    return if (usageUsable) {
+        val completionTokens = usage?.completionTokens?.takeIf { it > 0 }
+            ?: estimateTokenCount(listOf(lastAssistant))
+        usageTokens + completionTokens
+    } else {
+        estimateTokenCount(window) + estimateTextTokenCount(requestContext.checkpointContent.orEmpty())
+    }
 }
 
 fun estimateTokenCount(messages: List<UIMessage>): Int {

@@ -8,7 +8,6 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.InstantSerializer
-import me.rerere.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
 import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
@@ -34,7 +33,7 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
-    // Append-only checkpoints; the latest valid checkpoint replaces the request prefix.
+    // Internal checkpoints; the latest valid consolidated checkpoint replaces the request prefix.
     val compressionSummaries: List<CompressionSummary> = emptyList(),
     val modelOverrideId: Uuid? = null,
     @Transient
@@ -60,6 +59,17 @@ data class Conversation(
         if (messageNodes.none { it.id == boundaryNodeId }) return null
         val expectedFingerprint = checkpoint.sourceFingerprint ?: return checkpoint
         return checkpoint.takeIf { compressionSourceFingerprint(boundaryNodeId) == expectedFingerprint }
+    }
+
+    /** A request may use only checkpoints whose source can still be verified. */
+    fun activeCompressionForRequest(): CompressionSummary? {
+        val checkpoint = compressionSummaries.lastOrNull() ?: return null
+        val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
+        val expectedFingerprint = checkpoint.sourceFingerprint ?: return null
+        return checkpoint.takeIf {
+            messageNodes.any { node -> node.id == boundaryNodeId } &&
+                compressionSourceFingerprint(boundaryNodeId) == expectedFingerprint
+        }
     }
 
     /** Hashes the source history, including branch selection, alternates, and attachment references. */
@@ -88,47 +98,28 @@ data class Conversation(
         }
     }
 
-    fun requestWindowMessages(): List<UIMessage> = requestWindowForGeneration().messages
+    fun requestWindowMessages(): List<UIMessage> = requestContextForGeneration().messages
 
-    /** Builds the model window together with the original node indexes used to persist streamed updates. */
-    internal fun requestWindowForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
-        val checkpoint = activeCompression()
+    /** Compatibility alias for callers that also need streamed-message source mapping. */
+    internal fun requestWindowForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow =
+        requestContextForGeneration(messageRange)
+
+    /** Builds a model request window with the checkpoint separated from persisted chat messages. */
+    internal fun requestContextForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
+        val checkpoint = activeCompressionForRequest()
         val boundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
             messageNodes.indexOfFirst { it.id == boundaryId }.takeIf { it >= 0 }
         }
+        val shouldUseCheckpoint = checkpoint != null && boundaryIndex != null &&
+            (messageRange == null || messageRange.endInclusive >= boundaryIndex)
         val messages = mutableListOf<UIMessage>()
         val nodeIndexes = mutableListOf<Int?>()
 
-        if (checkpoint == null || boundaryIndex == null) {
-            messageNodes.forEachIndexed { index, node ->
-                if (messageRange == null || index in messageRange) {
-                    messages += node.messages[node.selectIndex]
-                    nodeIndexes += index
-                }
-            }
-        } else {
-            val shouldUseCheckpoint = messageRange == null ||
-                messageRange.start > boundaryIndex || messageRange.endInclusive >= boundaryIndex
-
-            if (shouldUseCheckpoint) {
-                messages += UIMessage(
-                    role = MessageRole.USER,
-                    parts = listOf(UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))),
-                    isSynthetic = true,
-                )
-                nodeIndexes += null
-            }
-
-            messageNodes.forEachIndexed { index, node ->
-                val belongsToWindow = if (shouldUseCheckpoint) {
-                    index > boundaryIndex
-                } else {
-                    index <= boundaryIndex
-                }
-                if (belongsToWindow && (messageRange == null || index in messageRange)) {
-                    messages += node.messages[node.selectIndex]
-                    nodeIndexes += index
-                }
+        messageNodes.forEachIndexed { index, node ->
+            val belongsToWindow = !shouldUseCheckpoint || index > boundaryIndex
+            if (belongsToWindow && (messageRange == null || index in messageRange)) {
+                messages += node.messages[node.selectIndex]
+                nodeIndexes += index
             }
         }
 
@@ -139,7 +130,12 @@ data class Conversation(
                 .coerceIn(0L, messageNodes.size.toLong())
                 .toInt()
         }
-        return ConversationRequestWindow(messages, nodeIndexes, appendNodeIndex)
+        return ConversationRequestWindow(
+            messages = messages,
+            sourceNodeIndexes = nodeIndexes,
+            appendNodeIndex = appendNodeIndex,
+            checkpointContent = checkpoint?.content?.takeIf { shouldUseCheckpoint },
+        )
     }
 
     /** Applies streamed request-window messages without persisting synthetic checkpoint messages. */
@@ -176,7 +172,7 @@ data class Conversation(
     }
 
     fun windowNodes(): List<MessageNode> {
-        val checkpoint = activeCompression() ?: return messageNodes
+        val checkpoint = activeCompressionForRequest() ?: return messageNodes
         val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
         if (boundaryIndex < 0) return messageNodes
         return messageNodes.drop(boundaryIndex + 1)
@@ -243,6 +239,7 @@ internal class ConversationRequestWindow(
     val messages: List<UIMessage>,
     internal val sourceNodeIndexes: List<Int?>,
     internal val appendNodeIndex: Int,
+    val checkpointContent: String? = null,
 )
 
 @Serializable
@@ -253,7 +250,7 @@ data class CompressionSummary(
     val boundaryNodeId: Uuid? = null,
     @Serializable(with = InstantSerializer::class)
     val createdAt: Instant = Instant.now(),
-    /** Null keeps checkpoints written before source validation compatible. */
+    /** Null identifies a legacy checkpoint whose source cannot be verified for requests. */
     val sourceFingerprint: String? = null,
 )
 

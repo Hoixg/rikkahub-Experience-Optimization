@@ -328,8 +328,7 @@ fun ChatInput(
                                     onSelect = onUpdateChatModel,
                                 )
                             } else {
-                                Text(settings.findModelById(modelOverrideId)?.displayName
-                                    ?: stringResource(R.string.scheduled_task_model_unavailable))
+                                Text(settings.findModelById(modelOverrideId)?.displayName ?: modelOverrideId.toString())
                             }
 
                             // Search
