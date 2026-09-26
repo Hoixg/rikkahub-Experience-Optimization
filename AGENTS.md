@@ -14,6 +14,17 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 ./gradlew lint                   # 运行 Android Lint
 ```
 
+## Custom release shortcut
+
+When the user says only `提交` in this repository, treat it as a request to publish the next custom release:
+
+1. Review and commit the intended local changes on `custom`; preserve unrelated work. Fetch `origin` and `upstream`, then merge `upstream/master` into `custom`, resolving conflicts without dropping custom features.
+2. Increment the last component of `versionName` in `app/build.gradle.kts` and increment `versionCode` by one. Verify the new version tag does not already exist locally or on `origin`.
+3. Run `:app:compileDebugKotlin` and fix failures. Commit the version change and merge, then push `custom` to `origin`.
+4. Create and push an annotated tag matching `versionName`. The tag triggers `.github/workflows/release.yml`, which signs, verifies, and publishes the APKs. Wait for the workflow to finish; report the Release link and any failure. Do not claim success before the APK assets are present.
+
+Do not put signing keys, passwords, or Google Services JSON in tracked files. If an upstream merge or build cannot be resolved safely, stop before pushing the release tag and report the blocker.
+
 ## Module Structure
 
 - **app**: Main application module with UI, ViewModels, and core logic
