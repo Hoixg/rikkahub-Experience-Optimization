@@ -1482,4 +1482,6 @@
   <string name="setting_termux_section_help">Setup help</string>
   <string name="setting_termux_help_allow_external_apps_title">How to enable allow-external-apps</string>
   <string name="setting_termux_help_allow_external_apps_body">In Termux, run:\n\n  mkdir -p ~/.termux\n  echo \'allow-external-apps=true\' &gt;&gt; ~/.termux/termux.properties\n\nThen force-stop Termux from Android App Info and reopen it. After that, tap the verify row above to confirm the link is working.</string>
+  <string name="skills_page_search_placeholder">Search skills</string>
+  <string name="skills_page_search_no_result">No matching skills</string>
 </resources>

@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
@@ -114,7 +114,9 @@ fun WorkspaceFileEditorPage(
     val isDocument = extension in setOf("pdf", "ppt", "pptx", "doc", "docx")
     val supportsWebPreview = extension in setOf("html", "htm", "svg")
 
-    val textState = rememberTextFieldState()
+    // 不能用 rememberTextFieldState: 它会把全文存进 saved state Bundle, 大文件切后台时触发 TransactionTooLargeException (#1953).
+    // 内容本就由下方 LaunchedEffect 从磁盘加载, 无需 saveable.
+    val textState = remember(id, area, path) { TextFieldState() }
     var loading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
