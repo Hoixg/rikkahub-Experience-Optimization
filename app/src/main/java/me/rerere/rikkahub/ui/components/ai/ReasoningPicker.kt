@@ -319,12 +319,15 @@ private fun ElasticReasoningTrack(value: Float, fillValue: Float) {
     val activeTickColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
     val inactiveTickColor = activeColor.copy(alpha = 0.85f)
     Canvas(Modifier.fillMaxWidth().height(24.dp)) {
-        // Material Slider lays the track out between the thumb's end positions.
-        // Use those exact bounds so the first and last ticks stay under the thumb.
         val left = 0f
         val width = size.width
         val centerY = size.height / 2f
         val halfHeight = 7.dp.toPx()
+        val tickRadius = 2.dp.toPx()
+        // The first and last tick centers coincide with the thumb's travel limits.
+        // Extend the capsule slightly past those centers so the end ticks sit fully on it.
+        val trackLeft = left - tickRadius
+        val trackRight = left + width + tickRadius
         val corner = CornerRadius(halfHeight)
         val currentX = left + width * (value / (levelCount - 1)).coerceIn(0f, 1f)
         val followingValue = fillValue.coerceIn(value - 0.35f, value + 0.35f)
@@ -332,15 +335,16 @@ private fun ElasticReasoningTrack(value: Float, fillValue: Float) {
 
         drawRoundRect(
             color = inactiveColor,
-            topLeft = Offset(left, centerY - halfHeight),
-            size = Size(width, halfHeight * 2f),
+            topLeft = Offset(trackLeft, centerY - halfHeight),
+            size = Size(trackRight - trackLeft, halfHeight * 2f),
             cornerRadius = corner,
         )
-        if (fillX > left) {
+        val activeTrackRight = (fillX + tickRadius).coerceAtMost(trackRight)
+        if (activeTrackRight > trackLeft) {
             drawRoundRect(
                 color = activeColor,
-                topLeft = Offset(left, centerY - halfHeight),
-                size = Size(fillX - left, halfHeight * 2f),
+                topLeft = Offset(trackLeft, centerY - halfHeight),
+                size = Size(activeTrackRight - trackLeft, halfHeight * 2f),
                 cornerRadius = corner,
             )
         }
@@ -368,7 +372,7 @@ private fun ElasticReasoningTrack(value: Float, fillValue: Float) {
             val tickX = left + width * index / (levelCount - 1)
             drawCircle(
                 color = if (tickX <= fillX) activeTickColor else inactiveTickColor,
-                radius = 2.dp.toPx(),
+                radius = tickRadius,
                 center = Offset(tickX, centerY),
             )
         }

@@ -502,11 +502,7 @@ internal fun buildCalendarDeleteTool(context: Context): Tool = Tool(
             return@Tool listOf(UIMessagePart.Text(payload.toString()))
         }
 
-        val deleted = context.contentResolver.delete(
-            eventUri,
-            "${CalendarContract.Events._ID} = ?",
-            arrayOf(eventId.toString()),
-        )
+        val deleted = context.contentResolver.delete(eventUri, null, null)
         val payload = buildJsonObject {
             if (deleted == 1) {
                 put("success", true)
