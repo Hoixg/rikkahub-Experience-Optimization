@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +36,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,7 +67,6 @@ import me.rerere.rikkahub.ui.components.ui.icons.ReasoningMedium
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val levels = ReasoningLevel.entries
@@ -122,26 +121,37 @@ fun ReasoningPicker(
         SliderState(
             value = currentIndex.toFloat(),
             trackRange = 0f..(levelCount - 1).toFloat(),
-            steps = levelCount - 2,
+            // Keep the thumb continuous while dragging; snap to the nearest level on release.
+            steps = 0,
         )
     }
+    var targetSliderValue by remember { mutableStateOf(currentIndex.toFloat()) }
+    val animatedSliderValue by animateFloatAsState(
+        targetValue = targetSliderValue,
+        animationSpec = spring(dampingRatio = 0.88f, stiffness = 160f),
+        label = "reasoning_thumb_follow",
+    )
     var motionImpulse by remember { mutableStateOf(0f) }
     var lastMotionNanos by remember { mutableStateOf(0L) }
     var lastDirection by remember { mutableStateOf(1f) }
     val animatedImpulse by animateFloatAsState(
         targetValue = motionImpulse,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = 380f),
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 250f),
         label = "reasoning_thumb_elasticity",
     )
     val animatedFill by animateFloatAsState(
-        targetValue = sliderState.value,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 250f),
+        targetValue = animatedSliderValue,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 105f),
         label = "reasoning_track_follow",
     )
-    val displayedLevel = levels[sliderState.value.roundToInt().coerceIn(0, levelCount - 1)]
+    val displayedLevel = levels[animatedSliderValue.roundToInt().coerceIn(0, levelCount - 1)]
+
+    SideEffect {
+        sliderState.value = animatedSliderValue
+    }
 
     LaunchedEffect(currentIndex) {
-        sliderState.value = currentIndex.toFloat()
+        targetSliderValue = currentIndex.toFloat()
         motionImpulse = 0f
         lastMotionNanos = 0L
     }
@@ -249,21 +259,22 @@ fun ReasoningPicker(
             Slider(
                 state = sliderState,
                 onValueChange = { value ->
-                    val delta = value - sliderState.value
+                    val delta = value - targetSliderValue
                     if (abs(delta) > 0.0001f) {
                         val now = System.nanoTime()
                         val elapsed = if (lastMotionNanos == 0L) 0.016f
                         else ((now - lastMotionNanos) / 1_000_000_000f).coerceAtLeast(0.008f)
                         val direction = if (delta > 0f) 1f else -1f
                         lastDirection = direction
-                        motionImpulse = direction * min(abs(delta) / elapsed / 8f, 1f)
+                        val speed = abs(delta) / elapsed
+                        motionImpulse = direction * (speed / (speed + 4f))
                         lastMotionNanos = now
                     }
-                    sliderState.value = value
+                    targetSliderValue = value
                 },
                 onValueChangeFinished = {
-                    val snappedIndex = sliderState.value.roundToInt().coerceIn(0, levelCount - 1)
-                    sliderState.value = snappedIndex.toFloat()
+                    val snappedIndex = targetSliderValue.roundToInt().coerceIn(0, levelCount - 1)
+                    targetSliderValue = snappedIndex.toFloat()
                     motionImpulse = 0f
                     lastMotionNanos = 0L
                     onUpdateReasoningLevel(levels[snappedIndex])
@@ -275,8 +286,8 @@ fun ReasoningPicker(
                             .size(24.dp)
                             .graphicsLayer {
                                 val strength = abs(animatedImpulse).coerceAtMost(1f)
-                                scaleX = 1f + 0.14f * strength
-                                scaleY = 1f - 0.08f * strength
+                                scaleX = 1f + 0.12f * strength
+                                scaleY = 1f - 0.06f * strength
                             }
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary),
@@ -285,7 +296,6 @@ fun ReasoningPicker(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
-                                .offset(x = (-2f * animatedImpulse).dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onPrimary)
                         )
@@ -309,9 +319,10 @@ private fun ElasticReasoningTrack(value: Float, fillValue: Float) {
     val activeTickColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
     val inactiveTickColor = activeColor.copy(alpha = 0.85f)
     Canvas(Modifier.fillMaxWidth().height(24.dp)) {
-        val left = 10.dp.toPx()
-        val right = size.width - left
-        val width = right - left
+        // Material Slider lays the track out between the thumb's end positions.
+        // Use those exact bounds so the first and last ticks stay under the thumb.
+        val left = 0f
+        val width = size.width
         val centerY = size.height / 2f
         val halfHeight = 7.dp.toPx()
         val corner = CornerRadius(halfHeight)
