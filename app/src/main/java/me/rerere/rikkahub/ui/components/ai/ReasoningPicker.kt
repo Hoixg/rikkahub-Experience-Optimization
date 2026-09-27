@@ -1,20 +1,36 @@
 package me.rerere.rikkahub.ui.components.ai
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
@@ -28,6 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,6 +64,10 @@ import me.rerere.rikkahub.ui.components.ui.ToggleSurface
 import me.rerere.rikkahub.ui.components.ui.icons.ReasoningHigh
 import me.rerere.rikkahub.ui.components.ui.icons.ReasoningLow
 import me.rerere.rikkahub.ui.components.ui.icons.ReasoningMedium
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val levels = ReasoningLevel.entries
@@ -98,9 +125,31 @@ fun ReasoningPicker(
             steps = levelCount - 2,
         )
     }
+    var motionImpulse by remember { mutableStateOf(0f) }
+    var lastMotionNanos by remember { mutableStateOf(0L) }
+    var lastDirection by remember { mutableStateOf(1f) }
+    val animatedImpulse by animateFloatAsState(
+        targetValue = motionImpulse,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 380f),
+        label = "reasoning_thumb_elasticity",
+    )
+    val animatedFill by animateFloatAsState(
+        targetValue = sliderState.value,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 250f),
+        label = "reasoning_track_follow",
+    )
+    val displayedLevel = levels[sliderState.value.roundToInt().coerceIn(0, levelCount - 1)]
 
     LaunchedEffect(currentIndex) {
         sliderState.value = currentIndex.toFloat()
+        motionImpulse = 0f
+        lastMotionNanos = 0L
+    }
+    LaunchedEffect(lastMotionNanos) {
+        if (lastMotionNanos != 0L) {
+            delay(80)
+            motionImpulse = 0f
+        }
     }
 
     ModalBottomSheet(
@@ -132,41 +181,91 @@ fun ReasoningPicker(
                 )
             }
 
-            // 当前等级展示
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            AnimatedContent(
+                targetState = displayedLevel,
+                modifier = Modifier.fillMaxWidth().height(72.dp),
+                contentAlignment = Alignment.Center,
+                transitionSpec = {
+                    val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
+                    val enterDuration = if (direction > 0) 240 else 180
+                    val exitDuration = if (direction > 0) 130 else 110
+                    (
+                        fadeIn(tween(enterDuration, delayMillis = 15)) +
+                            slideInVertically(tween(enterDuration, easing = FastOutSlowInEasing)) {
+                                direction * it / 7
+                            } +
+                            scaleIn(tween(enterDuration, easing = FastOutSlowInEasing), initialScale = 0.88f)
+                        ).togetherWith(
+                        fadeOut(tween(exitDuration)) +
+                            slideOutVertically(tween(exitDuration)) { -direction * it / 8 } +
+                            scaleOut(tween(exitDuration), targetScale = 0.92f)
+                    ).using(SizeTransform(clip = false))
+                },
+                label = "reasoning_level_switch",
             ) {
-                val iconColor by animateColorAsState(
-                    if (reasoningLevel.isEnabled) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface
-                )
-                Icon(
-                    imageVector = when (reasoningLevel) {
-                        ReasoningLevel.OFF -> HugeIcons.Idea
-                        ReasoningLevel.AUTO -> HugeIcons.Idea01
-                        ReasoningLevel.LOW -> ReasoningLow
-                        ReasoningLevel.MEDIUM -> ReasoningMedium
-                        ReasoningLevel.HIGH -> ReasoningHigh
-                        ReasoningLevel.XHIGH -> ReasoningHigh
-                        ReasoningLevel.MAX -> ReasoningHigh
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = iconColor,
-                )
-                Text(
-                    text = reasoningLevel.label(),
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                level ->
+                val glow = remember(level) { Animatable(0f) }
+                val tilt = remember(level) { Animatable(-5f * lastDirection) }
+                LaunchedEffect(level) {
+                    launch {
+                        tilt.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 420f))
+                    }
+                    glow.animateTo(1f, tween(90))
+                    glow.animateTo(0f, tween(190))
+                }
+                val iconColor = if (level.isEnabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                        Canvas(Modifier.size(36.dp)) {
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        iconColor.copy(alpha = 0.25f * glow.value),
+                                        Color.Transparent,
+                                    ),
+                                    radius = size.minDimension * 0.65f,
+                                ),
+                                radius = size.minDimension * 0.65f,
+                            )
+                        }
+                        ReasoningIcon(
+                            level = level,
+                            modifier = Modifier.size(32.dp).graphicsLayer {
+                                rotationZ = tilt.value
+                                scaleX = 1f + 0.07f * glow.value
+                                scaleY = 1f + 0.07f * glow.value
+                            },
+                            tint = iconColor,
+                        )
+                    }
+                    Text(level.label(), style = MaterialTheme.typography.titleMedium)
+                }
             }
 
             Slider(
                 state = sliderState,
-                onValueChange = { sliderState.value = it },
+                onValueChange = { value ->
+                    val delta = value - sliderState.value
+                    if (abs(delta) > 0.0001f) {
+                        val now = System.nanoTime()
+                        val elapsed = if (lastMotionNanos == 0L) 0.016f
+                        else ((now - lastMotionNanos) / 1_000_000_000f).coerceAtLeast(0.008f)
+                        val direction = if (delta > 0f) 1f else -1f
+                        lastDirection = direction
+                        motionImpulse = direction * min(abs(delta) / elapsed / 8f, 1f)
+                        lastMotionNanos = now
+                    }
+                    sliderState.value = value
+                },
                 onValueChangeFinished = {
                     val snappedIndex = sliderState.value.roundToInt().coerceIn(0, levelCount - 1)
                     sliderState.value = snappedIndex.toFloat()
+                    motionImpulse = 0f
+                    lastMotionNanos = 0L
                     onUpdateReasoningLevel(levels[snappedIndex])
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -174,6 +273,11 @@ fun ReasoningPicker(
                     Box(
                         modifier = Modifier
                             .size(24.dp)
+                            .graphicsLayer {
+                                val strength = abs(animatedImpulse).coerceAtMost(1f)
+                                scaleX = 1f + 0.14f * strength
+                                scaleY = 1f - 0.08f * strength
+                            }
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center,
@@ -181,16 +285,16 @@ fun ReasoningPicker(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
+                                .offset(x = (-2f * animatedImpulse).dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onPrimary)
                         )
                     }
                 },
-                track = { sliderState ->
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        drawStopIndicator = null,
-                        thumbTrackGapSize = 0.dp,
+                track = {
+                    ElasticReasoningTrack(
+                        value = sliderState.value,
+                        fillValue = animatedFill,
                     )
                 }
             )
@@ -199,16 +303,83 @@ fun ReasoningPicker(
 }
 
 @Composable
-private fun ReasoningIcon(level: ReasoningLevel) {
-    when (level) {
-        ReasoningLevel.OFF -> Icon(HugeIcons.Idea, null)
-        ReasoningLevel.AUTO -> Icon(HugeIcons.Idea01, null)
-        ReasoningLevel.LOW -> Icon(ReasoningLow, null)
-        ReasoningLevel.MEDIUM -> Icon(ReasoningMedium, null)
-        ReasoningLevel.HIGH -> Icon(ReasoningHigh, null)
-        ReasoningLevel.XHIGH -> Icon(ReasoningHigh, null)
-        ReasoningLevel.MAX -> Icon(ReasoningHigh, null)
+private fun ElasticReasoningTrack(value: Float, fillValue: Float) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val activeTickColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+    val inactiveTickColor = activeColor.copy(alpha = 0.85f)
+    Canvas(Modifier.fillMaxWidth().height(24.dp)) {
+        val left = 10.dp.toPx()
+        val right = size.width - left
+        val width = right - left
+        val centerY = size.height / 2f
+        val halfHeight = 7.dp.toPx()
+        val corner = CornerRadius(halfHeight)
+        val currentX = left + width * (value / (levelCount - 1)).coerceIn(0f, 1f)
+        val followingValue = fillValue.coerceIn(value - 0.35f, value + 0.35f)
+        val fillX = left + width * (followingValue / (levelCount - 1)).coerceIn(0f, 1f)
+
+        drawRoundRect(
+            color = inactiveColor,
+            topLeft = Offset(left, centerY - halfHeight),
+            size = Size(width, halfHeight * 2f),
+            cornerRadius = corner,
+        )
+        if (fillX > left) {
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(left, centerY - halfHeight),
+                size = Size(fillX - left, halfHeight * 2f),
+                cornerRadius = corner,
+            )
+        }
+        if (currentX > fillX + 1f) {
+            val neckStart = (fillX - halfHeight).coerceAtLeast(left)
+            val gap = currentX - neckStart
+            val neck = Path().apply {
+                moveTo(neckStart, centerY - halfHeight)
+                cubicTo(
+                    neckStart + gap * 0.35f, centerY - halfHeight,
+                    currentX - gap * 0.2f, centerY - halfHeight * 0.6f,
+                    currentX, centerY - halfHeight * 0.6f,
+                )
+                lineTo(currentX, centerY + halfHeight * 0.6f)
+                cubicTo(
+                    currentX - gap * 0.2f, centerY + halfHeight * 0.6f,
+                    neckStart + gap * 0.35f, centerY + halfHeight,
+                    neckStart, centerY + halfHeight,
+                )
+                close()
+            }
+            drawPath(neck, activeColor)
+        }
+        repeat(levelCount) { index ->
+            val tickX = left + width * index / (levelCount - 1)
+            drawCircle(
+                color = if (tickX <= fillX) activeTickColor else inactiveTickColor,
+                radius = 2.dp.toPx(),
+                center = Offset(tickX, centerY),
+            )
+        }
     }
+}
+
+@Composable
+private fun ReasoningIcon(
+    level: ReasoningLevel,
+    modifier: Modifier = Modifier,
+    tint: Color? = null,
+) {
+    val icon = when (level) {
+        ReasoningLevel.OFF -> HugeIcons.Idea
+        ReasoningLevel.AUTO -> HugeIcons.Idea01
+        ReasoningLevel.LOW -> ReasoningLow
+        ReasoningLevel.MEDIUM -> ReasoningMedium
+        ReasoningLevel.HIGH -> ReasoningHigh
+        ReasoningLevel.XHIGH -> ReasoningHigh
+        ReasoningLevel.MAX -> ReasoningHigh
+    }
+    Icon(icon, contentDescription = null, modifier = modifier, tint = tint ?: LocalContentColor.current)
 }
 
 @Composable
