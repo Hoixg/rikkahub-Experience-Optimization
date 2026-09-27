@@ -1052,7 +1052,14 @@ class ChatService(
             listOf(UIMessage(role = MessageRole.USER, parts = pendingParts)),
         )
         val usedTokens = conversation.estimateWindowTokens(model) + pendingTokens
-        if (!shouldAutoCompact(settings.enableAutoCompaction, usedTokens, windowTokens)) return
+        if (!shouldAutoCompact(
+                enabled = settings.enableAutoCompaction,
+                usedTokens = usedTokens,
+                windowTokens = windowTokens,
+                thresholdPercent = settings.autoCompactionThresholdPercent,
+                tokenLimit = settings.autoCompactionTokenLimit,
+            )
+        ) return
 
         val targetTokens = (windowTokens * AUTO_COMPRESS_TARGET_RATIO).toInt()
         val nodesToCompress = autoCompressNodes(conversation, windowTokens, pendingTokens)

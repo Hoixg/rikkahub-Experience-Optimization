@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -11,17 +12,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -46,6 +56,12 @@ import me.rerere.rikkahub.ui.components.ai.rememberModelListState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
+import me.rerere.rikkahub.utils.MAX_AUTO_COMPACTION_THRESHOLD_PERCENT
+import me.rerere.rikkahub.utils.MIN_AUTO_COMPACTION_THRESHOLD_PERCENT
+import me.rerere.rikkahub.utils.formatContextLength
+import me.rerere.rikkahub.utils.normalizeAutoCompactionThresholdPercent
+import me.rerere.rikkahub.utils.parseContextLengthInput
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import kotlin.uuid.Uuid
@@ -101,6 +117,7 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 
 @Composable
 private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding: PaddingValues) {
+    var showTokenLimitDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
@@ -170,9 +187,137 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                         )
                     },
                 )
+                if (settings.enableAutoCompaction) {
+                    item(
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_model_page_auto_compaction_threshold))
+                        },
+                        supportingContent = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = stringResource(R.string.setting_model_page_auto_compaction_threshold_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Slider(
+                                        value = settings.autoCompactionThresholdPercent.toFloat(),
+                                        onValueChange = { value ->
+                                            vm.updateSettings(
+                                                settings.copy(
+                                                    autoCompactionThresholdPercent =
+                                                        normalizeAutoCompactionThresholdPercent(value.toInt())
+                                                )
+                                            )
+                                        },
+                                        valueRange = MIN_AUTO_COMPACTION_THRESHOLD_PERCENT.toFloat()..
+                                            MAX_AUTO_COMPACTION_THRESHOLD_PERCENT.toFloat(),
+                                        steps = (MAX_AUTO_COMPACTION_THRESHOLD_PERCENT -
+                                            MIN_AUTO_COMPACTION_THRESHOLD_PERCENT) /
+                                            AUTO_COMPACTION_THRESHOLD_STEP_PERCENT - 1,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        text = "${settings.autoCompactionThresholdPercent}%",
+                                        modifier = Modifier.padding(start = 8.dp),
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
+                            }
+                        },
+                    )
+                    item(
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit))
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.setting_model_page_auto_compaction_token_limit_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        trailingContent = {
+                            OutlinedButton(onClick = { showTokenLimitDialog = true }) {
+                                Text(
+                                    settings.autoCompactionTokenLimit?.let(::formatContextLength)
+                                        ?: stringResource(R.string.setting_model_page_auto_compaction_token_limit_unlimited)
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
     }
+
+    if (showTokenLimitDialog) {
+        AutoCompactionTokenLimitDialog(
+            initialValue = settings.autoCompactionTokenLimit,
+            onConfirm = { value ->
+                vm.updateSettings(settings.copy(autoCompactionTokenLimit = value))
+                showTokenLimitDialog = false
+            },
+            onDismiss = { showTokenLimitDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun AutoCompactionTokenLimitDialog(
+    initialValue: Int?,
+    onConfirm: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember(initialValue) { mutableStateOf(formatContextLength(initialValue)) }
+    var hasError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit_dialog_desc))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        hasError = false
+                    },
+                    placeholder = { Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit_placeholder)) },
+                    singleLine = true,
+                    isError = hasError,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (hasError) {
+                    Text(
+                        text = stringResource(R.string.setting_model_page_auto_compaction_token_limit_invalid),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val parsed = if (text.isBlank()) null else parseContextLengthInput(text)
+                    if (text.isNotBlank() && parsed == null) {
+                        hasError = true
+                    } else {
+                        onConfirm(parsed)
+                    }
+                },
+            ) {
+                Text(stringResource(R.string.common_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
 
 @Composable

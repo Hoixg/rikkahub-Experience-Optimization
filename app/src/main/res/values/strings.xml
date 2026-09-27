@@ -1347,6 +1347,14 @@
   <string name="assistant_page_local_tools_termux_desc">允许 AI 在手机 Termux 中执行命令并控制持久终端会话</string>
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">Enabled by default. Before sending, older context is summarized as usage approaches the model limit; original chat messages remain available. Turn off to disable automatic compaction.</string>
+  <string name="setting_model_page_auto_compaction_threshold">Compaction trigger ratio</string>
+  <string name="setting_model_page_auto_compaction_threshold_desc">Calculated from each model’s context window. Unknown context sizes use 262.1k tokens.</string>
+  <string name="setting_model_page_auto_compaction_token_limit">Absolute token cap</string>
+  <string name="setting_model_page_auto_compaction_token_limit_desc">Compaction starts when this cap or the percentage threshold is reached first. Applies globally.</string>
+  <string name="setting_model_page_auto_compaction_token_limit_unlimited">No limit</string>
+  <string name="setting_model_page_auto_compaction_token_limit_dialog_desc">Set an optional global token cap. Leave blank to disable it; either threshold can trigger compaction.</string>
+  <string name="setting_model_page_auto_compaction_token_limit_placeholder">256k or 1.5m</string>
+  <string name="setting_model_page_auto_compaction_token_limit_invalid">Enter a token count from 1 to 100M, or leave it blank.</string>
   <string name="chat_generation_network_retrying">%1$s. Retrying (%2$d/%3$d)…</string>
   <string name="chat_generation_network_unknown_host">Unable to resolve server address</string>
   <string name="chat_generation_network_timeout">Connection timed out</string>

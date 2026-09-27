@@ -104,7 +104,7 @@ import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.estimateWindowTokens
 import me.rerere.rikkahub.utils.getConversationChatModel
-import me.rerere.rikkahub.utils.AUTO_COMPACT_THRESHOLD_RATIO
+import me.rerere.rikkahub.utils.autoCompactionThresholdTokens
 import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
@@ -760,6 +760,8 @@ private fun TopBar(
                 ContextUsageRingButton(
                     usedTokens = usage.usedTokens,
                     windowTokens = usage.windowTokens,
+                    thresholdPercent = settings.autoCompactionThresholdPercent,
+                    tokenLimit = settings.autoCompactionTokenLimit,
                 )
             }
 
@@ -827,6 +829,8 @@ private data class ContextUsage(
 private fun ContextUsageRingButton(
     usedTokens: Int,
     windowTokens: Int,
+    thresholdPercent: Int,
+    tokenLimit: Int?,
 ) {
     var showPopup by remember { mutableStateOf(false) }
     val fraction = if (windowTokens > 0) {
@@ -834,7 +838,12 @@ private fun ContextUsageRingButton(
     } else {
         0f
     }
-    val isWarning = windowTokens > 0 && fraction >= AUTO_COMPACT_THRESHOLD_RATIO
+    val warningThresholdTokens = autoCompactionThresholdTokens(
+        windowTokens = windowTokens,
+        thresholdPercent = thresholdPercent,
+        tokenLimit = tokenLimit,
+    )
+    val isWarning = warningThresholdTokens != null && usedTokens >= warningThresholdTokens
     val ringColor = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val trackColor = MaterialTheme.colorScheme.outlineVariant
     val percent = (fraction * 100f).roundToInt()

@@ -57,6 +57,9 @@ import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.ui.theme.CustomTheme
 import me.rerere.rikkahub.ui.theme.PresetThemes
 import me.rerere.rikkahub.utils.JsonInstant
+import me.rerere.rikkahub.utils.DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT
+import me.rerere.rikkahub.utils.normalizeAutoCompactionThresholdPercent
+import me.rerere.rikkahub.utils.normalizeAutoCompactionTokenLimit
 import me.rerere.rikkahub.utils.toMutableStateFlow
 import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchServiceOptions
@@ -138,6 +141,8 @@ class SettingsStore(
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
         val ENABLE_AUTO_COMPACTION = booleanPreferencesKey("enable_auto_compaction")
+        val AUTO_COMPACTION_THRESHOLD_PERCENT = intPreferencesKey("auto_compaction_threshold_percent")
+        val AUTO_COMPACTION_TOKEN_LIMIT = intPreferencesKey("auto_compaction_token_limit")
 
         // 提供商
         val PROVIDERS = stringPreferencesKey("providers")
@@ -215,6 +220,11 @@ class SettingsStore(
                 preferences.remove(COMPRESS_MODEL)
                 preferences[COMPRESS_PROMPT] = settings.compressPrompt
                 preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
+                preferences[AUTO_COMPACTION_THRESHOLD_PERCENT] =
+                    normalizeAutoCompactionThresholdPercent(settings.autoCompactionThresholdPercent)
+                normalizeAutoCompactionTokenLimit(settings.autoCompactionTokenLimit)?.let {
+                    preferences[AUTO_COMPACTION_TOKEN_LIMIT] = it
+                } ?: preferences.remove(AUTO_COMPACTION_TOKEN_LIMIT)
 
                 preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -284,6 +294,13 @@ class SettingsStore(
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
                 compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
                 enableAutoCompaction = preferences[ENABLE_AUTO_COMPACTION] ?: true,
+                autoCompactionThresholdPercent = normalizeAutoCompactionThresholdPercent(
+                    preferences[AUTO_COMPACTION_THRESHOLD_PERCENT]
+                        ?: DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
+                ),
+                autoCompactionTokenLimit = normalizeAutoCompactionTokenLimit(
+                    preferences[AUTO_COMPACTION_TOKEN_LIMIT],
+                ),
                 assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
                     ?: DEFAULT_ASSISTANT_ID,
                 assistantTags = preferences[ASSISTANT_TAGS]?.let {
@@ -475,6 +492,11 @@ class SettingsStore(
             preferences.remove(COMPRESS_MODEL)
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
             preferences[ENABLE_AUTO_COMPACTION] = settings.enableAutoCompaction
+            preferences[AUTO_COMPACTION_THRESHOLD_PERCENT] =
+                normalizeAutoCompactionThresholdPercent(settings.autoCompactionThresholdPercent)
+            normalizeAutoCompactionTokenLimit(settings.autoCompactionTokenLimit)?.let {
+                preferences[AUTO_COMPACTION_TOKEN_LIMIT] = it
+            } ?: preferences.remove(AUTO_COMPACTION_TOKEN_LIMIT)
 
             preferences[PROVIDERS] = JsonInstant.encodeToString(settings.providers)
 
@@ -634,6 +656,10 @@ data class Settings(
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,
     /** 全局自动压缩开关，新安装默认开启。 */
     val enableAutoCompaction: Boolean = true,
+    /** 全局自动压缩触发比例，作用于每个模型的有效上下文窗。 */
+    val autoCompactionThresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
+    /** 可选的全局 Token 上限；与比例阈值任一先到即触发。 */
+    val autoCompactionTokenLimit: Int? = null,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = emptyList(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,

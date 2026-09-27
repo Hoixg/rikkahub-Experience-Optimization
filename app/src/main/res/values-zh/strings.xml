@@ -1338,6 +1338,14 @@
   <string name="assistant_page_local_tools_termux_desc">允许 AI 在手机 Termux 中执行命令并控制持久终端会话</string>
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">默认开启。发送消息前会检查上下文占用，接近模型上限时自动总结较早内容；原始聊天记录仍可查看。关闭后不再自动压缩。</string>
+  <string name="setting_model_page_auto_compaction_threshold">压缩触发占用率</string>
+  <string name="setting_model_page_auto_compaction_threshold_desc">按各模型的上下文窗计算；未知上下文长度按 262.1k tokens 估算。</string>
+  <string name="setting_model_page_auto_compaction_token_limit">Token 绝对上限</string>
+  <string name="setting_model_page_auto_compaction_token_limit_desc">比例阈值或此上限任一先达到就开始压缩，且对所有模型生效。</string>
+  <string name="setting_model_page_auto_compaction_token_limit_unlimited">不限</string>
+  <string name="setting_model_page_auto_compaction_token_limit_dialog_desc">设置可选的全局 Token 上限。留空表示关闭此上限；比例或 Token 阈值任一达到都会触发压缩。</string>
+  <string name="setting_model_page_auto_compaction_token_limit_placeholder">例如 256k 或 1.5m</string>
+  <string name="setting_model_page_auto_compaction_token_limit_invalid">请输入 1 到 100m 之间的 Token 数，或留空。</string>
   <string name="setting_tts_page_default_playback_speed">默认播放速度</string>
   <string name="setting_tts_page_default_playback_speed_description">本地应用于每个TTS提供商，不会更改其合成设置。</string>
   <string name="search_page_scope_current_assistant">当前助手</string>

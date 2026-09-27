@@ -32,7 +32,11 @@ fun formatContextLength(tokens: Int?): String = when {
     else -> tokens.toString()
 }
 
-const val AUTO_COMPACT_THRESHOLD_RATIO = 0.8f
+const val DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT = 80
+const val MIN_AUTO_COMPACTION_THRESHOLD_PERCENT = 50
+const val MAX_AUTO_COMPACTION_THRESHOLD_PERCENT = 95
+const val AUTO_COMPACTION_THRESHOLD_STEP_PERCENT = 5
+const val MAX_AUTO_COMPACTION_TOKEN_LIMIT = 100_000_000
 
 private const val DEFAULT_CONTEXT_LENGTH = 256 * 1024
 
@@ -49,8 +53,43 @@ fun Settings.getConversationChatModel(conversation: Conversation): Model? {
     return findModelById(assistant.chatModelId) ?: findModelById(chatModelId)
 }
 
-fun shouldAutoCompact(enabled: Boolean, usedTokens: Int, windowTokens: Int): Boolean =
-    enabled && windowTokens > 0 && usedTokens >= (windowTokens * AUTO_COMPACT_THRESHOLD_RATIO).toInt()
+fun normalizeAutoCompactionThresholdPercent(value: Int): Int {
+    val clamped = value.coerceIn(
+        MIN_AUTO_COMPACTION_THRESHOLD_PERCENT,
+        MAX_AUTO_COMPACTION_THRESHOLD_PERCENT,
+    )
+    val stepsFromMinimum = (clamped - MIN_AUTO_COMPACTION_THRESHOLD_PERCENT + AUTO_COMPACTION_THRESHOLD_STEP_PERCENT / 2) /
+        AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
+    return MIN_AUTO_COMPACTION_THRESHOLD_PERCENT + stepsFromMinimum * AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
+}
+
+fun normalizeAutoCompactionTokenLimit(value: Int?): Int? =
+    value?.takeIf { it in 1..MAX_AUTO_COMPACTION_TOKEN_LIMIT }
+
+fun autoCompactionThresholdTokens(
+    windowTokens: Int,
+    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
+    tokenLimit: Int? = null,
+): Int? {
+    if (windowTokens <= 0) return null
+
+    val percentageThreshold = (
+        windowTokens.toLong() * normalizeAutoCompactionThresholdPercent(thresholdPercent) / 100L
+    ).toInt()
+    return minOf(percentageThreshold, normalizeAutoCompactionTokenLimit(tokenLimit) ?: Int.MAX_VALUE)
+}
+
+fun shouldAutoCompact(
+    enabled: Boolean,
+    usedTokens: Int,
+    windowTokens: Int,
+    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
+    tokenLimit: Int? = null,
+): Boolean {
+    if (!enabled) return false
+    val thresholdTokens = autoCompactionThresholdTokens(windowTokens, thresholdPercent, tokenLimit) ?: return false
+    return usedTokens >= thresholdTokens
+}
 
 private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
     atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()

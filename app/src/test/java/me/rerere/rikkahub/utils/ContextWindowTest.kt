@@ -66,8 +66,42 @@ class ContextWindowTest {
     }
 
     @Test
+    fun autoCompactionUsesConfiguredPercentageAndWhicheverThresholdComesFirst() {
+        assertFalse(shouldAutoCompact(true, usedTokens = 69, windowTokens = 100, thresholdPercent = 70))
+        assertTrue(shouldAutoCompact(true, usedTokens = 70, windowTokens = 100, thresholdPercent = 70))
+
+        // An absolute cap below the percentage threshold triggers first.
+        assertFalse(shouldAutoCompact(true, usedTokens = 64, windowTokens = 100, thresholdPercent = 80, tokenLimit = 65))
+        assertTrue(shouldAutoCompact(true, usedTokens = 65, windowTokens = 100, thresholdPercent = 80, tokenLimit = 65))
+
+        // A higher absolute cap does not delay the percentage threshold.
+        assertFalse(shouldAutoCompact(true, usedTokens = 79, windowTokens = 100, thresholdPercent = 80, tokenLimit = 90))
+        assertTrue(shouldAutoCompact(true, usedTokens = 80, windowTokens = 100, thresholdPercent = 80, tokenLimit = 90))
+    }
+
+    @Test
+    fun defaultAutoCompactionThresholdPreservesTheExistingContextWindowBehavior() {
+        assertEquals(DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT, Settings().autoCompactionThresholdPercent)
+        assertNull(Settings().autoCompactionTokenLimit)
+        val unknownModel: Model? = null
+        assertEquals(262_144, unknownModel.effectiveContextLength())
+        assertEquals(209_715, autoCompactionThresholdTokens(windowTokens = 262_144))
+    }
+
+    @Test
+    fun autoCompactionSettingsAreNormalizedToSupportedRanges() {
+        assertEquals(MIN_AUTO_COMPACTION_THRESHOLD_PERCENT, normalizeAutoCompactionThresholdPercent(0))
+        assertEquals(85, normalizeAutoCompactionThresholdPercent(83))
+        assertEquals(MAX_AUTO_COMPACTION_THRESHOLD_PERCENT, normalizeAutoCompactionThresholdPercent(100))
+        assertNull(normalizeAutoCompactionTokenLimit(0))
+        assertNull(normalizeAutoCompactionTokenLimit(MAX_AUTO_COMPACTION_TOKEN_LIMIT + 1))
+    }
+
+    @Test
     fun autoCompactionIsEnabledByDefaultButCanBeDisabled() {
         assertTrue(Settings().enableAutoCompaction)
+        assertEquals(80, Settings().autoCompactionThresholdPercent)
+        assertNull(Settings().autoCompactionTokenLimit)
         assertFalse(Settings(enableAutoCompaction = false).enableAutoCompaction)
     }
 
