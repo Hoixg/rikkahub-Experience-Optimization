@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -21,12 +25,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,6 +57,7 @@ import me.rerere.hugeicons.stroke.AiEditing
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.ui.components.ai.ModelListSheet
 import me.rerere.rikkahub.ui.components.ai.ReasoningButton
 import me.rerere.rikkahub.ui.components.ai.rememberModelListState
@@ -59,11 +67,14 @@ import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
 import me.rerere.rikkahub.utils.MAX_AUTO_COMPACTION_THRESHOLD_PERCENT
 import me.rerere.rikkahub.utils.MIN_AUTO_COMPACTION_THRESHOLD_PERCENT
+import me.rerere.rikkahub.utils.autoCompactionThresholdTokens
+import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.normalizeAutoCompactionThresholdPercent
 import me.rerere.rikkahub.utils.parseContextLengthInput
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
+import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
 @Composable
@@ -117,6 +128,24 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 
 @Composable
 private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding: PaddingValues) {
+    var thresholdSliderValue by remember(settings.autoCompactionThresholdPercent) {
+        mutableFloatStateOf(settings.autoCompactionThresholdPercent.toFloat())
+    }
+    var isThresholdSliderDragging by remember { mutableStateOf(false) }
+    val settledThresholdSliderValue by animateFloatAsState(
+        targetValue = thresholdSliderValue,
+        animationSpec = if (isThresholdSliderDragging) {
+            snap()
+        } else {
+            spring(dampingRatio = 0.82f, stiffness = 700f)
+        },
+        label = "auto_compaction_threshold_slider",
+    )
+    val visibleThresholdPercent = normalizeAutoCompactionThresholdPercent(
+        (if (isThresholdSliderDragging) thresholdSliderValue else settledThresholdSliderValue).roundToInt()
+    )
+    val activeThresholdTickColor = MaterialTheme.colorScheme.surface
+    val inactiveThresholdTickColor = MaterialTheme.colorScheme.onSurfaceVariant
     var showTokenLimitDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -193,7 +222,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                             Text(stringResource(R.string.setting_model_page_auto_compaction_threshold))
                         },
                         supportingContent = {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
                                     text = stringResource(R.string.setting_model_page_auto_compaction_threshold_desc),
                                     style = MaterialTheme.typography.bodySmall,
@@ -201,31 +230,108 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                                 )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Slider(
-                                        value = settings.autoCompactionThresholdPercent.toFloat(),
+                                        value = if (isThresholdSliderDragging) {
+                                            thresholdSliderValue
+                                        } else {
+                                            settledThresholdSliderValue
+                                        },
                                         onValueChange = { value ->
-                                            vm.updateSettings(
-                                                settings.copy(
-                                                    autoCompactionThresholdPercent =
-                                                        normalizeAutoCompactionThresholdPercent(value.toInt())
-                                                )
+                                            isThresholdSliderDragging = true
+                                            thresholdSliderValue = value
+                                        },
+                                        onValueChangeFinished = {
+                                            val snappedPercent = normalizeAutoCompactionThresholdPercent(
+                                                thresholdSliderValue.roundToInt()
                                             )
+                                            isThresholdSliderDragging = false
+                                            thresholdSliderValue = snappedPercent.toFloat()
+                                            if (snappedPercent != settings.autoCompactionThresholdPercent) {
+                                                vm.updateSettings(
+                                                    settings.copy(autoCompactionThresholdPercent = snappedPercent)
+                                                )
+                                            }
                                         },
                                         valueRange = MIN_AUTO_COMPACTION_THRESHOLD_PERCENT.toFloat()..
                                             MAX_AUTO_COMPACTION_THRESHOLD_PERCENT.toFloat(),
-                                        steps = (MAX_AUTO_COMPACTION_THRESHOLD_PERCENT -
-                                            MIN_AUTO_COMPACTION_THRESHOLD_PERCENT) /
-                                            AUTO_COMPACTION_THRESHOLD_STEP_PERCENT - 1,
-                                        modifier = Modifier.weight(1f),
+                                        steps = 0,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .drawWithContent {
+                                                drawContent()
+                                                val horizontalInset = 10.dp.toPx()
+                                                val trackWidth = size.width - horizontalInset * 2
+                                                val range = MAX_AUTO_COMPACTION_THRESHOLD_PERCENT -
+                                                    MIN_AUTO_COMPACTION_THRESHOLD_PERCENT
+                                                val sliderValue = if (isThresholdSliderDragging) {
+                                                    thresholdSliderValue
+                                                } else {
+                                                    settledThresholdSliderValue
+                                                }
+                                                val thumbFraction = (
+                                                    (sliderValue - MIN_AUTO_COMPACTION_THRESHOLD_PERCENT) / range
+                                                    ).coerceIn(0f, 1f)
+                                                val thumbX = horizontalInset + trackWidth * thumbFraction
+                                                val thumbExclusionRadius = 11.dp.toPx()
+                                                for (step in 1 until range / AUTO_COMPACTION_THRESHOLD_STEP_PERCENT) {
+                                                    val tickX = horizontalInset + trackWidth *
+                                                        step / (range / AUTO_COMPACTION_THRESHOLD_STEP_PERCENT)
+                                                    if (kotlin.math.abs(tickX - thumbX) > thumbExclusionRadius) {
+                                                            drawCircle(
+                                                            color = if (tickX < thumbX) {
+                                                                activeThresholdTickColor
+                                                            } else {
+                                                                inactiveThresholdTickColor
+                                                            },
+                                                            radius = 2.dp.toPx(),
+                                                            center = Offset(tickX, size.height / 2),
+                                                        )
+                                                    }
+                                                }
+                                            },
                                     )
-                                    Text(
-                                        text = "${settings.autoCompactionThresholdPercent}%",
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = MaterialTheme.shapes.small,
                                         modifier = Modifier.padding(start = 8.dp),
-                                        style = MaterialTheme.typography.labelLarge,
-                                    )
+                                    ) {
+                                        Text(
+                                            text = "$visibleThresholdPercent%",
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        )
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    listOf(50, 65, 80, 95).forEach { value ->
+                                        Text(
+                                            text = "$value%",
+                                            color = if (value == visibleThresholdPercent) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
                                 }
                             }
                         },
                     )
+                }
+            }
+        }
+        if (settings.enableAutoCompaction) {
+            item {
+                AutoCompactionThresholdPreview(
+                    settings.copy(autoCompactionThresholdPercent = visibleThresholdPercent)
+                )
+            }
+            item {
+                CardGroup {
                     item(
                         headlineContent = {
                             Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit))
@@ -259,6 +365,69 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 showTokenLimitDialog = false
             },
             onDismiss = { showTokenLimitDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun AutoCompactionThresholdPreview(settings: Settings) {
+    val windowTokens = settings.getCurrentChatModel().effectiveContextLength()
+    val percentThreshold = autoCompactionThresholdTokens(
+        windowTokens = windowTokens,
+        thresholdPercent = settings.autoCompactionThresholdPercent,
+    ) ?: return
+    val effectiveThreshold = autoCompactionThresholdTokens(
+        windowTokens = windowTokens,
+        thresholdPercent = settings.autoCompactionThresholdPercent,
+        tokenLimit = settings.autoCompactionTokenLimit,
+    ) ?: return
+
+    CardGroup {
+        item(
+            headlineContent = {
+                Text(stringResource(R.string.setting_model_page_auto_compaction_preview_title))
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.setting_model_page_auto_compaction_preview_percent_formula,
+                                    formatContextLength(windowTokens),
+                                    settings.autoCompactionThresholdPercent,
+                                    formatContextLength(percentThreshold),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            val actualTriggerText = settings.autoCompactionTokenLimit?.let { limit ->
+                                stringResource(
+                                    R.string.setting_model_page_auto_compaction_preview_min_formula,
+                                    formatContextLength(percentThreshold),
+                                    formatContextLength(limit),
+                                    formatContextLength(effectiveThreshold),
+                                )
+                            } ?: stringResource(
+                                R.string.setting_model_page_auto_compaction_preview_actual_trigger,
+                                formatContextLength(effectiveThreshold),
+                            )
+                            Text(
+                                text = actualTriggerText,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            },
         )
     }
 }

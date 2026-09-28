@@ -64,9 +64,11 @@ import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -102,6 +104,7 @@ import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.effectiveContextLength
+import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.estimateWindowTokens
 import me.rerere.rikkahub.utils.getConversationChatModel
 import me.rerere.rikkahub.utils.autoCompactionThresholdTokens
@@ -329,10 +332,30 @@ private fun ChatPageContent(
     }
     val allowAudioVideoAttachments =
         conversationChatModel?.findProvider(setting.providers) is ProviderSetting.Google
-    val contextUsage = remember(conversation, conversationChatModel, setting.enableAutoCompaction) {
+    val pendingText = inputState.textContent.text.toString()
+    val pendingParts = inputState.messageContent
+    val editingMessageId = inputState.editingMessage
+    val pendingTokens = remember(pendingText, pendingParts, editingMessageId, setting.enableAutoCompaction) {
+        if (setting.enableAutoCompaction && editingMessageId == null) {
+            val parts = inputState.getContents()
+            if (parts.isNotEmpty()) {
+                estimateTokenCount(listOf(UIMessage(role = MessageRole.USER, parts = parts)))
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    }
+    val contextUsage = remember(
+        conversation,
+        conversationChatModel,
+        setting.enableAutoCompaction,
+        pendingTokens,
+    ) {
         if (setting.enableAutoCompaction && conversationChatModel != null) {
             ContextUsage(
-                usedTokens = conversation.estimateWindowTokens(conversationChatModel),
+                usedTokens = conversation.estimateWindowTokens(conversationChatModel) + pendingTokens,
                 windowTokens = conversationChatModel.effectiveContextLength(),
             )
         } else {
@@ -902,6 +925,7 @@ private fun ContextUsageRingButton(
                 R.string.chat_context_usage_tooltip,
                 formatContextLength(usedTokens),
                 formatContextLength(windowTokens),
+                warningThresholdTokens?.let(::formatContextLength) ?: "—",
             ),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             style = MaterialTheme.typography.bodySmall,
