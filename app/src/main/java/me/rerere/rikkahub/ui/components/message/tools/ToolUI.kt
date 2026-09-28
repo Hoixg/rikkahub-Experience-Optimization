@@ -99,6 +99,7 @@ object ToolUIRegistry {
         GetScreenTimeToolUI,
         CalendarQueryToolUI,
         CalendarCreateToolUI,
+        ChartDisplayToolUI,
         CalendarDeleteToolUI,
         UseSkillToolUI,
         RecentChatsToolUI,

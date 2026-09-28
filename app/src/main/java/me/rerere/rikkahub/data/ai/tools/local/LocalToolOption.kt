@@ -44,4 +44,8 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("termux")
     data object Termux : LocalToolOption()
+
+    @Serializable
+    @SerialName("chart_display")
+    data object ChartDisplay : LocalToolOption()
 }

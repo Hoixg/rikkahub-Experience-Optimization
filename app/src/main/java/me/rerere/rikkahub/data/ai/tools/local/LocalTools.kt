@@ -35,6 +35,8 @@ class LocalTools(
 
     val calendarDeleteTool by lazy { buildCalendarDeleteTool(context) }
 
+    val chartDisplayTool by lazy { buildChartDisplayTool() }
+
     fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
@@ -76,6 +78,9 @@ class LocalTools(
             tools.add(termuxSessionReadTool(context))
             tools.add(termuxSessionKillTool(context))
             tools.add(termuxSessionListTool(context))
+        }
+        if (options.contains(LocalToolOption.ChartDisplay)) {
+            tools.add(chartDisplayTool)
         }
         return tools
     }

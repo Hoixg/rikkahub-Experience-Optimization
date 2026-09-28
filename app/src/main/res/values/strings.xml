@@ -1496,4 +1496,12 @@
   <string name="setting_termux_help_allow_external_apps_body">In Termux, run:\n\n  mkdir -p ~/.termux\n  echo \'allow-external-apps=true\' &gt;&gt; ~/.termux/termux.properties\n\nThen force-stop Termux from Android App Info and reopen it. After that, tap the verify row above to confirm the link is working.</string>
   <string name="skills_page_search_placeholder">Search skills</string>
   <string name="skills_page_search_no_result">No matching skills</string>
+  <string name="assistant_page_local_tools_chart_display_title">Chart Display</string>
+  <string name="assistant_page_local_tools_chart_display_desc">Let the AI display line, bar, and scatter charts</string>
+  <string name="chat_message_tool_chart_display">Display chart</string>
+  <string name="chat_message_tool_chart_display_with_title">Display chart: %1$s</string>
+  <string name="chart_mode_chart">Chart</string>
+  <string name="chart_mode_table">Table</string>
+  <string name="chart_series">Series</string>
+  <string name="chart_series_name">Series %1$d</string>
 </resources>
