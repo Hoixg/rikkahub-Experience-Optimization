@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -272,10 +274,10 @@ private fun ApiKeyEditor(
     val duplicateDraftKey = entries.withIndex().any { (index, entry) ->
         index != editingIndex && entry.key == normalizedDraftKey
     }
-    val draftValid = normalizedDraftKey.isNotBlank() && !duplicateDraftKey &&
-        draftMultiplierValue != null && draftMultiplierValue > 0f
+    val multiplierValid = draftMultiplierValue != null && draftMultiplierValue.isFinite() && draftMultiplierValue > 0f
+    val draftValid = normalizedDraftKey.isNotBlank() && !duplicateDraftKey && multiplierValid
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -292,95 +294,116 @@ private fun ApiKeyEditor(
                 )
             }
         }
-        if (entries.isEmpty()) {
-            Text(
-                text = stringResource(R.string.setting_provider_page_api_key_empty),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        entries.forEachIndexed { index, entry ->
-            val positionThreshold = SwipeToDismissBoxDefaults.positionalThreshold
-            val dismissState = remember(index, entry.key) {
-                SwipeToDismissBoxState(
-                    initialValue = SwipeToDismissBoxValue.Settled,
-                    positionalThreshold = positionThreshold,
-                )
-            }
-            LaunchedEffect(dismissState.currentValue) {
-                if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-                    val remaining = entries.toMutableList().apply { removeAt(index) }
-                    val nextIndex = when {
-                        remaining.isEmpty() -> 0
-                        index < selectedIndex -> selectedIndex - 1
-                        index == selectedIndex -> index.coerceAtMost(remaining.lastIndex)
-                        else -> selectedIndex
-                    }
-                    onEdit(provider.withApiKeyInfos(remaining, nextIndex))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column {
+                if (entries.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.setting_provider_page_api_key_empty),
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-            }
-            SwipeToDismissBox(
-                state = dismissState,
-                enableDismissFromStartToEnd = false,
-                backgroundContent = {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 20.dp),
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_api_key_delete), tint = MaterialTheme.colorScheme.onErrorContainer)
-                    }
-                },
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            onApiKeySelected(provider.withApiKeyInfos(entries, index))
-                        },
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 1.dp,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        RadioButton(
-                            selected = index == selectedIndex,
-                            onClick = null,
+                entries.forEachIndexed { index, entry ->
+                    val isSelected = index == selectedIndex
+                    val positionThreshold = SwipeToDismissBoxDefaults.positionalThreshold
+                    val dismissState = remember(index, entry.key) {
+                        SwipeToDismissBoxState(
+                            initialValue = SwipeToDismissBoxValue.Settled,
+                            positionalThreshold = positionThreshold,
                         )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = entry.name.ifBlank { stringResource(R.string.setting_provider_page_api_key_unnamed) },
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = "x${formatMultiplier(entry.multiplier)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        IconButton(onClick = { openEditor(index) }) {
-                            Icon(
-                                HugeIcons.PencilEdit01,
-                                contentDescription = stringResource(R.string.setting_provider_page_api_key_edit),
-                            )
+                    }
+                    LaunchedEffect(dismissState.currentValue) {
+                        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+                            val remaining = entries.toMutableList().apply { removeAt(index) }
+                            val nextIndex = when {
+                                remaining.isEmpty() -> 0
+                                index < selectedIndex -> selectedIndex - 1
+                                index == selectedIndex -> index.coerceAtMost(remaining.lastIndex)
+                                else -> selectedIndex
+                            }
+                            onEdit(provider.withApiKeyInfos(remaining, nextIndex))
                         }
                     }
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.errorContainer)
+                                    .padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                Icon(HugeIcons.Delete01, contentDescription = stringResource(R.string.setting_provider_page_api_key_delete), tint = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                                    else MaterialTheme.colorScheme.surfaceContainerLow
+                                )
+                                .clickable {
+                                    onApiKeySelected(provider.withApiKeyInfos(entries, index))
+                                }
+                                .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            RadioButton(selected = isSelected, onClick = null)
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = entry.name.ifBlank { stringResource(R.string.setting_provider_page_api_key_unnamed) },
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (isSelected) {
+                                        Text(
+                                            text = stringResource(R.string.setting_provider_page_api_key_current),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = maskApiKey(entry.key),
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = "×${formatMultiplier(entry.multiplier)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { openEditor(index) }) {
+                                Icon(
+                                    HugeIcons.PencilEdit01,
+                                    contentDescription = stringResource(R.string.setting_provider_page_api_key_edit),
+                                )
+                            }
+                        }
+                    }
+                    if (index < entries.lastIndex) {
+                        HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+                    }
                 }
-            }
-            if (index < entries.lastIndex) {
-                HorizontalDivider()
             }
         }
     }
@@ -395,17 +418,25 @@ private fun ApiKeyEditor(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = draftKey,
                         onValueChange = { draftKey = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(stringResource(R.string.setting_provider_page_api_key)) },
                         singleLine = true,
+                        isError = duplicateDraftKey,
+                        supportingText = if (duplicateDraftKey) {
+                            { Text(stringResource(R.string.setting_provider_page_api_key_duplicate)) }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         visualTransformation = if (draftShowKey) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
                             IconButton(onClick = { draftShowKey = !draftShowKey }) {
-                                Icon(if (draftShowKey) HugeIcons.ViewOff else HugeIcons.View, contentDescription = null)
+                                Icon(
+                                    if (draftShowKey) HugeIcons.ViewOff else HugeIcons.View,
+                                    contentDescription = stringResource(R.string.setting_provider_page_api_key_visibility),
+                                )
                             }
                         },
                     )
@@ -413,7 +444,7 @@ private fun ApiKeyEditor(
                         value = draftName,
                         onValueChange = { draftName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.setting_provider_page_api_key_name)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_api_key_name_optional)) },
                         singleLine = true,
                     )
                     OutlinedTextField(
@@ -422,6 +453,11 @@ private fun ApiKeyEditor(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(stringResource(R.string.setting_provider_page_api_key_multiplier)) },
                         singleLine = true,
+                        isError = !multiplierValid,
+                        supportingText = if (!multiplierValid) {
+                            { Text(stringResource(R.string.setting_provider_page_api_key_multiplier_invalid)) }
+                        } else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                 }
             },
@@ -450,8 +486,8 @@ private fun formatMultiplier(value: Float): String =
     if (value % 1f == 0f) value.toInt().toString() else value.toString()
 
 private fun maskApiKey(key: String): String = when {
-    key.length <= 8 -> "*".repeat(key.length)
-    else -> key.take(4) + "..." + key.takeLast(4)
+    key.length <= 8 -> "•".repeat(key.length)
+    else -> "••••••••" + key.takeLast(4)
 }
 
 @Composable

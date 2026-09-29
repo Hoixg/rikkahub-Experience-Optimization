@@ -105,6 +105,18 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_show_workspace_shortcut_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_show_workspace_shortcut_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.showWorkspaceShortcut,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(showWorkspaceShortcut = it))
+                                }
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_show_message_jumper_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_show_message_jumper_desc)) },
                         trailingContent = {

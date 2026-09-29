@@ -736,6 +736,7 @@ data class DisplaySetting(
     val showUpdates: Boolean = true,
     val updateCheckDisabledUntilEpochMillis: Long = 0L,
     val showMessageJumper: Boolean = true,
+    val showWorkspaceShortcut: Boolean = true,
     val messageJumperOnLeft: Boolean = false,
     val fontSizeRatio: Float = 1.0f,
     val enableMessageGenerationHapticEffect: Boolean = false,

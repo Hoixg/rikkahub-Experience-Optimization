@@ -367,7 +367,7 @@ fun ChatInput(
                                 )
                             }
 
-                            if (workspace != null) {
+                            if (workspace != null && settings.displaySetting.showWorkspaceShortcut) {
                                 WorkspaceButton(onClick = onWorkspaceClick)
                             }
 
