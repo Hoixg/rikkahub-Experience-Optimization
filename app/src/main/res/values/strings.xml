@@ -1407,7 +1407,7 @@
   <string name="chat_page_queue_send_now">Send</string>
   <string name="chat_page_queue_actions">Message actions</string>
   <string name="chat_page_queue_reorder">Long press to reorder</string>
-  <string name="chat_page_queue_more_count">Show %1$d more queued messages</string>
+  <string name="chat_page_queue_more_count">Show %1$d more</string>
   <string name="chat_page_queue_priority">Next to send</string>
   <string name="chat_page_queue_expand">Expand queued messages</string>
   <string name="chat_page_queue_collapse">Collapse queued messages</string>
