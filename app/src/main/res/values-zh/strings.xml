@@ -891,10 +891,6 @@
   <string name="setting_provider_page_api_key_delete">删除 API Key</string>
   <string name="setting_provider_page_api_key_empty">尚未添加 API Key</string>
   <string name="setting_provider_page_api_key_unnamed">未命名 Key</string>
-  <string name="setting_provider_page_api_key_current">当前使用</string>
-  <string name="setting_provider_page_api_key_name_optional">Key 名称（可选）</string>
-  <string name="setting_provider_page_api_key_duplicate">此 API Key 已添加</string>
-  <string name="setting_provider_page_api_key_multiplier_invalid">请输入大于 0 的数字</string>
   <string name="setting_provider_page_api_path">API 路径</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">余额 API 路径</string>
@@ -1367,13 +1363,13 @@
   <string name="chat_page_queue_audio">[音频]</string>
   <string name="chat_page_queue_video">[视频]</string>
   <string name="chat_page_queue_editing">编辑中</string>
-  <string name="chat_page_queue_remove">移除</string>
+  <string name="chat_page_queue_remove">撤销</string>
   <string name="chat_page_queue_edit_title">编辑待发送消息</string>
   <string name="chat_page_queue_paused_count">队列已暂停 · %1$d</string>
   <string name="chat_page_queue_pending_count">待发送 · %1$d</string>
-  <string name="chat_page_queue_send_now">优先发送</string>
+  <string name="chat_page_queue_send_now">发送</string>
   <string name="chat_page_queue_priority">下一条发送</string>
-  <string name="chat_page_queue_expand">打开待发送消息</string>
+  <string name="chat_page_queue_expand">展开待发送消息</string>
   <string name="chat_page_queue_collapse">收起待发送消息</string>
   <string name="chat_page_queue_question_skipped">已跳过此问题，继续发送新消息。</string>
   <string name="chat_page_voice_select_model">请先选择聊天模型</string>

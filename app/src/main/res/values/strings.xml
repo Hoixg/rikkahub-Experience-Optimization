@@ -923,10 +923,6 @@
   <string name="setting_provider_page_api_key_delete">Delete API key</string>
   <string name="setting_provider_page_api_key_empty">No API keys added</string>
   <string name="setting_provider_page_api_key_unnamed">Unnamed key</string>
-  <string name="setting_provider_page_api_key_current">Current</string>
-  <string name="setting_provider_page_api_key_name_optional">Key name (optional)</string>
-  <string name="setting_provider_page_api_key_duplicate">This API Key is already added</string>
-  <string name="setting_provider_page_api_key_multiplier_invalid">Enter a number greater than 0</string>
   <string name="setting_provider_page_api_path">API Path</string>
   <string name="setting_provider_page_avaliable_models">Avaliable Models</string>
   <string name="setting_provider_page_balance_api_path">Balance API Path</string>
@@ -1408,9 +1404,9 @@
   <string name="chat_page_queue_edit_title">Edit queued message</string>
   <string name="chat_page_queue_paused_count">Queue paused · %1$d</string>
   <string name="chat_page_queue_pending_count">Queued · %1$d</string>
-  <string name="chat_page_queue_send_now">Prioritize sending</string>
+  <string name="chat_page_queue_send_now">Send</string>
   <string name="chat_page_queue_priority">Next to send</string>
-  <string name="chat_page_queue_expand">Open queued messages</string>
+  <string name="chat_page_queue_expand">Expand queued messages</string>
   <string name="chat_page_queue_collapse">Collapse queued messages</string>
   <string name="chat_page_queue_question_skipped">Question skipped; sending the new message.</string>
   <string name="assistant_page_time_reminder_interval">Time reminder interval</string>
