@@ -3,6 +3,7 @@ package me.rerere.rikkahub.service
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import me.rerere.ai.ui.UIMessagePart
+import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -195,5 +196,68 @@ class MessageQueueTest {
 
         assertNull(first.takeNext())
         assertEquals(text("second"), second.takeNext()!!.parts)
+    }
+
+    @Test
+    fun `moving a message changes dispatch order without changing its contents or observer`() {
+        val queue = MessageQueue()
+        val reply = CompletableDeferred<String?>()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"), reply = reply)
+        queue.enqueue(text("third"))
+        val ids = queue.state.value.messages.map { it.id }
+
+        assertTrue(queue.move(ids[2], ids[0]))
+        assertEquals(listOf(ids[2], ids[0], ids[1]), queue.state.value.messages.map { it.id })
+        assertEquals(text("third"), queue.takeNext()!!.parts)
+        assertEquals(text("first"), queue.takeNext()!!.parts)
+        val last = queue.takeNext()!!
+        assertEquals(text("second"), last.parts)
+        assertTrue(last.reply === reply)
+    }
+
+    @Test
+    fun `expedited head stays first while other messages can be reordered`() {
+        val queue = MessageQueue()
+        repeat(4) { queue.enqueue(text("$it")) }
+        val ids = queue.state.value.messages.map { it.id }
+        queue.prioritize(ids[2])
+
+        assertFalse(queue.move(ids[2], ids[0]))
+        assertFalse(queue.move(ids[3], ids[2]))
+        assertTrue(queue.move(ids[3], ids[0]))
+        assertEquals(listOf(ids[2], ids[3], ids[0], ids[1]), queue.state.value.messages.map { it.id })
+        assertEquals(ids[2], queue.takeNext()!!.id)
+    }
+
+    @Test
+    fun `editing or vanished messages cannot be dragged`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+        val ids = queue.state.value.messages.map { it.id }
+        queue.beginEdit(ids[0])
+
+        assertFalse(queue.move(ids[0], ids[1]))
+        assertFalse(queue.move(Uuid.random(), ids[1]))
+        assertFalse(queue.move(ids[1], Uuid.random()))
+        assertEquals(ids, queue.state.value.messages.map { it.id })
+        queue.remove(ids[0])
+        assertFalse(queue.move(ids[0], ids[1]))
+    }
+
+    @Test
+    fun `reordering a paused queue does not resume sending`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("first"))
+        queue.enqueue(text("second"))
+        val ids = queue.state.value.messages.map { it.id }
+        queue.pause()
+
+        assertTrue(queue.move(ids[1], ids[0]))
+        assertTrue(queue.state.value.paused)
+        assertNull(queue.takeNext())
+        queue.resume()
+        assertEquals(ids[1], queue.takeNext()!!.id)
     }
 }

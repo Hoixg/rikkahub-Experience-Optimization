@@ -413,6 +413,7 @@ private fun ChatPageContent(
                     state = inputState,
                     messageQueue = messageQueue,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
+                    onMoveQueuedMessage = vm::moveQueuedMessage,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
                     onFinishEditQueuedMessage = vm::finishEditQueuedMessage,
                     onSendQueuedMessageImmediately = vm::sendQueuedMessageImmediately,

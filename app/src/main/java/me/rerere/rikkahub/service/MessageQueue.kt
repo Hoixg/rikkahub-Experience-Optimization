@@ -91,6 +91,20 @@ class MessageQueue {
         return selected
     }
 
+    /** Move a pending message to another item's position. An expedited item stays first. */
+    @Synchronized
+    fun move(id: Uuid, targetId: Uuid): Boolean {
+        val current = state.value
+        val from = current.messages.indexOfFirst { it.id == id }
+        val to = current.messages.indexOfFirst { it.id == targetId }
+        if (from < 0 || to < 0 || from == to || current.messages[from].isEditing) return false
+        if (current.priorityMessageId != null && (from == 0 || to == 0)) return false
+
+        val reordered = current.messages.toMutableList().apply { add(to, removeAt(from)) }
+        mutableState.value = current.copy(messages = reordered)
+        return true
+    }
+
     @Synchronized
     fun remove(id: Uuid): QueuedMessage? {
         val removed = state.value.messages.find { it.id == id } ?: return null

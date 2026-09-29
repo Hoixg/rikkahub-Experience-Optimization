@@ -131,6 +131,9 @@ class ChatVM(
 
     fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
 
+    fun moveQueuedMessage(id: Uuid, targetId: Uuid) =
+        chatService.moveQueuedMessage(_conversationId, id, targetId)
+
     fun beginEditQueuedMessage(id: Uuid) = chatService.beginEditQueuedMessage(_conversationId, id)
 
     fun finishEditQueuedMessage(id: Uuid, parts: List<UIMessagePart>?) =

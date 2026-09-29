@@ -316,6 +316,12 @@ class ChatService(
         dispatchNextQueuedMessage(conversationId)
     }
 
+    fun moveQueuedMessage(conversationId: Uuid, messageId: Uuid, targetId: Uuid) {
+        if (sessionManager.get(conversationId)?.messageQueue?.move(messageId, targetId) == true) {
+            dispatchNextQueuedMessage(conversationId)
+        }
+    }
+
     fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
         sessionManager.get(conversationId)?.messageQueue?.beginEdit(messageId)
 
