@@ -103,6 +103,8 @@ import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
+import me.rerere.rikkahub.utils.contextUsageDisplayCapacity
+import me.rerere.rikkahub.utils.contextUsageFraction
 import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.estimateWindowTokens
@@ -351,12 +353,14 @@ private fun ChatPageContent(
         conversation,
         conversationChatModel,
         setting.enableAutoCompaction,
+        setting.autoCompactionTokenLimit,
         pendingTokens,
     ) {
         if (setting.enableAutoCompaction && conversationChatModel != null) {
             ContextUsage(
                 usedTokens = conversation.estimateWindowTokens(conversationChatModel) + pendingTokens,
-                windowTokens = conversationChatModel.effectiveContextLength(),
+                modelWindowTokens = conversationChatModel.effectiveContextLength(),
+                displayCapacityTokens = contextUsageDisplayCapacity(setting.autoCompactionTokenLimit),
             )
         } else {
             null
@@ -783,7 +787,8 @@ private fun TopBar(
             contextUsage?.let { usage ->
                 ContextUsageRingButton(
                     usedTokens = usage.usedTokens,
-                    windowTokens = usage.windowTokens,
+                    modelWindowTokens = usage.modelWindowTokens,
+                    displayCapacityTokens = usage.displayCapacityTokens,
                     thresholdPercent = settings.autoCompactionThresholdPercent,
                     tokenLimit = settings.autoCompactionTokenLimit,
                 )
@@ -846,24 +851,22 @@ private fun TopBar(
 
 private data class ContextUsage(
     val usedTokens: Int,
-    val windowTokens: Int,
+    val modelWindowTokens: Int,
+    val displayCapacityTokens: Int,
 )
 
 @Composable
 private fun ContextUsageRingButton(
     usedTokens: Int,
-    windowTokens: Int,
+    modelWindowTokens: Int,
+    displayCapacityTokens: Int,
     thresholdPercent: Int,
     tokenLimit: Int?,
 ) {
     var showPopup by remember { mutableStateOf(false) }
-    val fraction = if (windowTokens > 0) {
-        (usedTokens.toFloat() / windowTokens).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
+    val fraction = contextUsageFraction(usedTokens, displayCapacityTokens)
     val warningThresholdTokens = autoCompactionThresholdTokens(
-        windowTokens = windowTokens,
+        windowTokens = modelWindowTokens,
         thresholdPercent = thresholdPercent,
         tokenLimit = tokenLimit,
     )
@@ -925,8 +928,7 @@ private fun ContextUsageRingButton(
             text = stringResource(
                 R.string.chat_context_usage_tooltip,
                 formatContextLength(usedTokens),
-                formatContextLength(windowTokens),
-                warningThresholdTokens?.let(::formatContextLength) ?: "—",
+                formatContextLength(displayCapacityTokens),
             ),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             style = MaterialTheme.typography.bodySmall,

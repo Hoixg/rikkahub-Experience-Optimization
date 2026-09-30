@@ -57,7 +57,6 @@ import me.rerere.hugeicons.stroke.AiEditing
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.ui.components.ai.ModelListSheet
 import me.rerere.rikkahub.ui.components.ai.ReasoningButton
 import me.rerere.rikkahub.ui.components.ai.rememberModelListState
@@ -67,8 +66,6 @@ import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
 import me.rerere.rikkahub.utils.MAX_AUTO_COMPACTION_THRESHOLD_PERCENT
 import me.rerere.rikkahub.utils.MIN_AUTO_COMPACTION_THRESHOLD_PERCENT
-import me.rerere.rikkahub.utils.autoCompactionThresholdTokens
-import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.normalizeAutoCompactionThresholdPercent
 import me.rerere.rikkahub.utils.parseContextLengthInput
@@ -326,11 +323,6 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         }
         if (settings.enableAutoCompaction) {
             item {
-                AutoCompactionThresholdPreview(
-                    settings.copy(autoCompactionThresholdPercent = visibleThresholdPercent)
-                )
-            }
-            item {
                 CardGroup {
                     item(
                         headlineContent = {
@@ -365,69 +357,6 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 showTokenLimitDialog = false
             },
             onDismiss = { showTokenLimitDialog = false },
-        )
-    }
-}
-
-@Composable
-private fun AutoCompactionThresholdPreview(settings: Settings) {
-    val windowTokens = settings.getCurrentChatModel().effectiveContextLength()
-    val percentThreshold = autoCompactionThresholdTokens(
-        windowTokens = windowTokens,
-        thresholdPercent = settings.autoCompactionThresholdPercent,
-    ) ?: return
-    val effectiveThreshold = autoCompactionThresholdTokens(
-        windowTokens = windowTokens,
-        thresholdPercent = settings.autoCompactionThresholdPercent,
-        tokenLimit = settings.autoCompactionTokenLimit,
-    ) ?: return
-
-    CardGroup {
-        item(
-            headlineContent = {
-                Text(stringResource(R.string.setting_model_page_auto_compaction_preview_title))
-            },
-            supportingContent = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        shape = MaterialTheme.shapes.medium,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    R.string.setting_model_page_auto_compaction_preview_percent_formula,
-                                    formatContextLength(windowTokens),
-                                    settings.autoCompactionThresholdPercent,
-                                    formatContextLength(percentThreshold),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            val actualTriggerText = settings.autoCompactionTokenLimit?.let { limit ->
-                                stringResource(
-                                    R.string.setting_model_page_auto_compaction_preview_min_formula,
-                                    formatContextLength(percentThreshold),
-                                    formatContextLength(limit),
-                                    formatContextLength(effectiveThreshold),
-                                )
-                            } ?: stringResource(
-                                R.string.setting_model_page_auto_compaction_preview_actual_trigger,
-                                formatContextLength(effectiveThreshold),
-                            )
-                            Text(
-                                text = actualTriggerText,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-            },
         )
     }
 }

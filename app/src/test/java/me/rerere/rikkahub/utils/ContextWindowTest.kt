@@ -58,6 +58,47 @@ class ContextWindowTest {
     }
 
     @Test
+    fun contextUsageDisplayCapacityUsesTheConfiguredCapOrFixedDefault() {
+        assertEquals(262_144, contextUsageDisplayCapacity(null))
+        assertEquals("262.1K", formatContextLength(contextUsageDisplayCapacity(null)))
+        assertEquals(100_000, contextUsageDisplayCapacity(parseContextLengthInput("100k")))
+        assertEquals("100K", formatContextLength(contextUsageDisplayCapacity(100_000)))
+        assertEquals(1_000_000, contextUsageDisplayCapacity(parseContextLengthInput("1m")))
+        assertEquals(262_144, contextUsageDisplayCapacity(parseContextLengthInput("")))
+        assertEquals(262_144, contextUsageDisplayCapacity(0))
+        assertEquals(262_144, contextUsageDisplayCapacity(MAX_AUTO_COMPACTION_TOKEN_LIMIT + 1))
+    }
+
+    @Test
+    fun contextUsageProgressUsesDisplayCapacityAndClampsOverflow() {
+        val capacity = contextUsageDisplayCapacity(100_000)
+        assertEquals(0f, contextUsageFraction(0, capacity), 0f)
+        assertEquals(0.5f, contextUsageFraction(50_000, capacity), 0f)
+        assertEquals(1f, contextUsageFraction(100_000, capacity), 0f)
+        assertEquals(1f, contextUsageFraction(120_000, capacity), 0f)
+        assertEquals("120K", formatContextLength(120_000))
+        assertEquals(0f, contextUsageFraction(-1, capacity), 0f)
+        assertEquals(0f, contextUsageFraction(1, 0), 0f)
+    }
+
+    @Test
+    fun contextUsageDisplayCapacityDoesNotChangeModelCompactionThresholds() {
+        val model = Model(modelId = "context-indicator-model", contextLength = 1_000_000)
+        val windowTokens = model.effectiveContextLength()
+        assertEquals(1_000_000, windowTokens)
+        assertEquals(262_144, contextUsageDisplayCapacity(null))
+        assertEquals(800_000, autoCompactionThresholdTokens(windowTokens = windowTokens))
+
+        assertEquals(100_000, contextUsageDisplayCapacity(100_000))
+        assertEquals(100_000, autoCompactionThresholdTokens(windowTokens = windowTokens, tokenLimit = 100_000))
+        assertFalse(shouldAutoCompact(true, usedTokens = 99_999, windowTokens = windowTokens, tokenLimit = 100_000))
+        assertTrue(shouldAutoCompact(true, usedTokens = 100_000, windowTokens = windowTokens, tokenLimit = 100_000))
+
+        assertEquals(1_000_000, contextUsageDisplayCapacity(1_000_000))
+        assertEquals(800_000, autoCompactionThresholdTokens(windowTokens = windowTokens, tokenLimit = 1_000_000))
+    }
+
+    @Test
     fun autoCompactionOnlyRunsWhenEnabledAndAtThreshold() {
         assertFalse(shouldAutoCompact(enabled = false, usedTokens = 100, windowTokens = 100))
         assertFalse(shouldAutoCompact(enabled = true, usedTokens = 79, windowTokens = 100))

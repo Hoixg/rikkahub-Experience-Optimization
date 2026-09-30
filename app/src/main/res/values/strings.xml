@@ -1350,11 +1350,7 @@
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">Enabled by default. Before sending, older context is summarized as usage approaches the model limit; original chat messages remain available. Turn off to disable automatic compaction.</string>
   <string name="setting_model_page_auto_compaction_threshold">Compaction trigger ratio</string>
-  <string name="setting_model_page_auto_compaction_threshold_desc">Calculated from each model’s context window. The preview uses the current chat model; unknown context sizes use 262.1k tokens.</string>
-  <string name="setting_model_page_auto_compaction_preview_title">Actual trigger line</string>
-  <string name="setting_model_page_auto_compaction_preview_percent_formula">Model context %1$s × %2$d%% = %3$s tokens</string>
-  <string name="setting_model_page_auto_compaction_preview_min_formula">Actual trigger: min(%1$s, %2$s) = %3$s tokens</string>
-  <string name="setting_model_page_auto_compaction_preview_actual_trigger">Actual trigger: %1$s tokens</string>
+  <string name="setting_model_page_auto_compaction_threshold_desc">Set the compaction threshold as a percentage of each model’s context window.</string>
   <string name="setting_model_page_auto_compaction_token_limit">Absolute token cap</string>
   <string name="setting_model_page_auto_compaction_token_limit_desc">Compaction starts when this cap or the percentage threshold is reached first. Applies globally.</string>
   <string name="setting_model_page_auto_compaction_token_limit_unlimited">No limit</string>
@@ -1444,7 +1440,7 @@
   <string name="setting_provider_page_context_length_placeholder">Model default</string>
   <string name="setting_provider_page_context_length_hint">Examples: 4096, 256K, 1M. Leave empty to use the model registry value.</string>
   <string name="setting_provider_page_context_length_invalid">Enter a positive token count up to 100M.</string>
-  <string name="chat_context_usage_tooltip">Context used: %1$s / %2$s\nCompaction starts at: %3$s</string>
+  <string name="chat_context_usage_tooltip">Context used: %1$s / %2$s</string>
   <string name="chat_checkpoint_title">Context checkpoint</string>
   <string name="chat_checkpoint_message_count">%1$d messages included</string>
   <string name="setting_display_page_background_effect_title">Input bar background effect</string>

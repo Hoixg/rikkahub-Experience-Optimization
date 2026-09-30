@@ -116,7 +116,6 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
-import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.components.ui.ShareSheet
 import me.rerere.rikkahub.ui.components.ui.SiliconFlowPowerByIcon
 import me.rerere.rikkahub.ui.components.ui.Tag
@@ -1400,7 +1399,6 @@ private fun ModelCard(
         onEdit(it.copy(displayName = it.displayName.trim()))
     }
     val scope = rememberCoroutineScope()
-    var showDeleteDialog by remember { mutableStateOf(false) }
 
 
     if (dialogState.isEditing) {
@@ -1536,26 +1534,13 @@ private fun ModelCard(
                         text = stringResource(R.string.delete),
                         icon = HugeIcons.Delete01,
                         destructive = true,
-                        onClick = { showDeleteDialog = true },
+                        onClick = onDelete,
                     ),
                 )
             )
         }
     }
 
-    RikkaConfirmDialog(
-        show = showDeleteDialog,
-        title = stringResource(R.string.confirm_delete),
-        confirmText = stringResource(R.string.delete),
-        dismissText = stringResource(R.string.cancel),
-        onConfirm = {
-            showDeleteDialog = false
-            onDelete()
-        },
-        onDismiss = { showDeleteDialog = false },
-    ) {
-        Text(stringResource(R.string.common_delete_confirm_message, model.displayName))
-    }
 }
 
 @Composable

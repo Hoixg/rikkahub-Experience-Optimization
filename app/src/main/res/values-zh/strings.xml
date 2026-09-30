@@ -1341,11 +1341,7 @@
   <string name="setting_model_page_enable_auto_compaction">自动压缩上下文</string>
   <string name="setting_model_page_enable_auto_compaction_desc">默认开启。发送消息前会检查上下文占用，接近模型上限时自动总结较早内容；原始聊天记录仍可查看。关闭后不再自动压缩。</string>
   <string name="setting_model_page_auto_compaction_threshold">压缩触发占用率</string>
-  <string name="setting_model_page_auto_compaction_threshold_desc">按各模型的上下文窗计算；下方预览使用当前聊天模型，未知上下文按 262.1k tokens 估算。</string>
-  <string name="setting_model_page_auto_compaction_preview_title">实际触发线</string>
-  <string name="setting_model_page_auto_compaction_preview_percent_formula">模型上下文 %1$s × %2$d%% = %3$s tokens</string>
-  <string name="setting_model_page_auto_compaction_preview_min_formula">实际触发：min(%1$s, %2$s) = %3$s tokens</string>
-  <string name="setting_model_page_auto_compaction_preview_actual_trigger">实际触发：%1$s tokens</string>
+  <string name="setting_model_page_auto_compaction_threshold_desc">按各模型上下文窗口的百分比设置压缩触发阈值。</string>
   <string name="setting_model_page_auto_compaction_token_limit">Token 绝对上限</string>
   <string name="setting_model_page_auto_compaction_token_limit_desc">比例阈值或此上限任一先达到就开始压缩，且对所有模型生效。</string>
   <string name="setting_model_page_auto_compaction_token_limit_unlimited">不限</string>
@@ -1432,7 +1428,7 @@
   <string name="setting_provider_page_context_length_placeholder">使用模型默认值</string>
   <string name="setting_provider_page_context_length_hint">支持 4096、256K、1M 等格式。留空时使用模型注册表数值。</string>
   <string name="setting_provider_page_context_length_invalid">请输入不超过 1 亿的正整数 Token。</string>
-  <string name="chat_context_usage_tooltip">当前占用：%1$s / %2$s\n压缩触发：%3$s</string>
+  <string name="chat_context_usage_tooltip">当前占用：%1$s / %2$s</string>
   <string name="chat_checkpoint_title">上下文检查点</string>
   <string name="chat_checkpoint_message_count">包含 %1$d 条消息</string>
   <string name="setting_display_page_background_effect_title">输入栏背景效果</string>

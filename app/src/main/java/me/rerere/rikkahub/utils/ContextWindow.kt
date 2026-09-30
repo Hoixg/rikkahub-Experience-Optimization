@@ -66,6 +66,16 @@ fun normalizeAutoCompactionThresholdPercent(value: Int): Int {
 fun normalizeAutoCompactionTokenLimit(value: Int?): Int? =
     value?.takeIf { it in 1..MAX_AUTO_COMPACTION_TOKEN_LIMIT }
 
+internal fun contextUsageDisplayCapacity(tokenLimit: Int?): Int =
+    normalizeAutoCompactionTokenLimit(tokenLimit) ?: DEFAULT_CONTEXT_LENGTH
+
+internal fun contextUsageFraction(usedTokens: Int, capacityTokens: Int): Float =
+    if (capacityTokens > 0) {
+        (usedTokens.toFloat() / capacityTokens).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
 fun autoCompactionThresholdTokens(
     windowTokens: Int,
     thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
