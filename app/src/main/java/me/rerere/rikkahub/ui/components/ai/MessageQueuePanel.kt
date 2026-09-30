@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -30,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +58,8 @@ import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+
+private const val INLINE_QUEUE_LIMIT = 2
 
 @Composable
 internal fun MessageQueuePanel(
@@ -121,20 +127,18 @@ internal fun MessageQueuePanel(
         onSendImmediately(id)
     }
 
-    val firstMessage = state.messages.first()
-    CompactQueueBar(
+    CompactQueueList(
         state = state,
-        actionsExpanded = actionsMessageId == firstMessage.id,
+        actionsMessageId = actionsMessageId,
         onShowAll = {
             actionsMessageId = null
             sheetOpen = true
         },
-        onToggleActions = {
-            actionsMessageId = firstMessage.id.takeUnless { it == actionsMessageId }
-        },
-        onBeginEdit = { beginEdit(firstMessage.id) },
-        onRemove = { remove(firstMessage.id) },
-        onSendImmediately = { send(firstMessage.id) },
+        onToggleActions = { id -> actionsMessageId = id.takeUnless { it == actionsMessageId } },
+        onBeginEdit = beginEdit,
+        onRemove = remove,
+        onSendImmediately = send,
+        onMove = onMove,
     )
 
     if (sheetOpen) {
@@ -161,34 +165,44 @@ internal fun MessageQueuePanel(
 }
 
 @Composable
-private fun CompactQueueBar(
+private fun CompactQueueList(
     state: MessageQueueState,
-    actionsExpanded: Boolean,
+    actionsMessageId: Uuid?,
     onShowAll: () -> Unit,
-    onToggleActions: () -> Unit,
-    onBeginEdit: () -> Unit,
-    onRemove: () -> Unit,
-    onSendImmediately: () -> Unit,
+    onToggleActions: (Uuid) -> Unit,
+    onBeginEdit: (Uuid) -> Unit,
+    onRemove: (Uuid) -> Unit,
+    onSendImmediately: (Uuid) -> Unit,
+    onMove: (Uuid, Uuid) -> Unit,
 ) {
-    val firstMessage = state.messages.first()
-    val isPriority = state.priorityMessageId == firstMessage.id
     Surface(
-        shape = MaterialTheme.shapes.large,
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
         modifier = Modifier.fillMaxWidth().testTag("chat_message_queue"),
     ) {
-        Row(
-            modifier = Modifier.heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+            QueueList(
+                messages = state.messages.take(INLINE_QUEUE_LIMIT),
+                priorityMessageId = state.priorityMessageId,
+                editingId = null,
+                editInput = null,
+                actionsMessageId = actionsMessageId,
+                onToggleActions = onToggleActions,
+                onBeginEdit = onBeginEdit,
+                onFinishEdit = {},
+                onRemove = onRemove,
+                onSendImmediately = onSendImmediately,
+                onMove = onMove,
+                maxHeight = 82.dp,
+                compact = true,
+            )
             Row(
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
                     .clickable(onClickLabel = stringResource(R.string.chat_page_queue_expand), onClick = onShowAll)
-                    .heightIn(min = 48.dp)
-                    .padding(start = 10.dp, end = 4.dp),
+                    .heightIn(min = 28.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
             ) {
                 Text(
                     text = stringResource(
@@ -204,29 +218,10 @@ private fun CompactQueueBar(
                 Icon(
                     HugeIcons.ArrowDown01,
                     contentDescription = null,
-                    modifier = Modifier.size(12.dp),
+                    modifier = Modifier.size(14.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = if (isPriority) {
-                        "${stringResource(R.string.chat_page_queue_priority)} · ${messagePreview(firstMessage)}"
-                    } else messagePreview(firstMessage),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isPriority) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-            QueuedMessageActions(
-                actionsExpanded = actionsExpanded,
-                isPriority = isPriority,
-                onToggleActions = onToggleActions,
-                onBeginEdit = onBeginEdit,
-                onRemove = onRemove,
-                onSendImmediately = onSendImmediately,
-            )
         }
     }
 }
@@ -270,6 +265,7 @@ private fun QueueList(
     onSendImmediately: (Uuid) -> Unit,
     onMove: (Uuid, Uuid) -> Unit,
     maxHeight: androidx.compose.ui.unit.Dp,
+    compact: Boolean = false,
 ) {
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -281,9 +277,9 @@ private fun QueueList(
     LazyColumn(
         state = lazyListState,
         modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 2.dp),
     ) {
-        items(messages, key = { it.id }) { message ->
+        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
             ReorderableItem(state = reorderableState, key = message.id) { isDragging ->
                 val canDrag = !message.isEditing && message.id != priorityMessageId
                 QueuedMessageRow(
@@ -294,12 +290,20 @@ private fun QueueList(
                     actionsExpanded = actionsMessageId == message.id,
                     isDragging = isDragging,
                     canDrag = canDrag,
+                    compact = compact,
                     previewModifier = if (canDrag) Modifier.longPressDraggableHandle() else Modifier,
                     onToggleActions = { onToggleActions(message.id) },
                     onBeginEdit = { onBeginEdit(message.id) },
                     onFinishEdit = onFinishEdit,
                     onRemove = { onRemove(message.id) },
                     onSendImmediately = { onSendImmediately(message.id) },
+                )
+            }
+            if (compact && index < messages.lastIndex) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                 )
             }
         }
@@ -315,6 +319,7 @@ private fun QueuedMessageRow(
     actionsExpanded: Boolean,
     isDragging: Boolean,
     canDrag: Boolean,
+    compact: Boolean,
     previewModifier: Modifier,
     onToggleActions: () -> Unit,
     onBeginEdit: () -> Unit,
@@ -325,13 +330,16 @@ private fun QueuedMessageRow(
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = if (isDragging) MaterialTheme.colorScheme.primaryContainer
+        else if (compact) Color.Transparent
         else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(horizontal = 2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(
-                    modifier = Modifier.weight(1f).then(previewModifier).padding(start = 6.dp, end = 2.dp),
+                    modifier = Modifier.weight(1f).then(previewModifier)
+                        .heightIn(min = if (compact) 40.dp else 48.dp)
+                        .padding(start = 6.dp, end = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -345,13 +353,17 @@ private fun QueuedMessageRow(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = messagePreview(message),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            text = if (compact && isPriority) {
+                                "${stringResource(R.string.chat_page_queue_priority)} · ${messagePreview(message)}"
+                            } else messagePreview(message),
+                            style = if (compact) MaterialTheme.typography.bodySmall
+                            else MaterialTheme.typography.bodyMedium,
+                            color = if (compact && isPriority) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (isPriority) {
+                        if (isPriority && !compact) {
                             Text(
                                 text = stringResource(R.string.chat_page_queue_priority),
                                 style = MaterialTheme.typography.labelSmall,
@@ -368,6 +380,7 @@ private fun QueuedMessageRow(
                         onBeginEdit = onBeginEdit,
                         onRemove = onRemove,
                         onSendImmediately = onSendImmediately,
+                        compact = compact,
                     )
                 }
             }
@@ -401,48 +414,64 @@ private fun QueuedMessageActions(
     onBeginEdit: () -> Unit,
     onRemove: () -> Unit,
     onSendImmediately: () -> Unit,
+    compact: Boolean = false,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AnimatedContent(
-            targetState = actionsExpanded,
-            transitionSpec = {
-                if (targetState) {
-                    (slideInHorizontally { it } + fadeIn())
-                        .togetherWith(slideOutHorizontally { -it } + fadeOut())
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides if (compact) 40.dp else 48.dp) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AnimatedContent(
+                targetState = actionsExpanded,
+                transitionSpec = {
+                    if (targetState) {
+                        (slideInHorizontally { it } + fadeIn())
+                            .togetherWith(slideOutHorizontally { -it } + fadeOut())
+                    } else {
+                        (slideInHorizontally { -it } + fadeIn())
+                            .togetherWith(slideOutHorizontally { it } + fadeOut())
+                    }.using(SizeTransform(clip = false))
+                },
+                label = "Queued message actions",
+            ) { showActions ->
+                if (showActions) {
+                    Row {
+                        QueueActionButton(R.string.edit, actionsExpanded, compact, onBeginEdit)
+                        QueueActionButton(R.string.delete, actionsExpanded, compact, onRemove)
+                    }
                 } else {
-                    (slideInHorizontally { -it } + fadeIn())
-                        .togetherWith(slideOutHorizontally { it } + fadeOut())
-                }.using(SizeTransform(clip = false))
-            },
-            label = "Queued message actions",
-        ) { showActions ->
-            if (showActions) {
-                Row {
-                    TextButton(
-                        enabled = actionsExpanded,
-                        onClick = onBeginEdit,
-                        contentPadding = PaddingValues(horizontal = 6.dp),
-                    ) { Text(stringResource(R.string.edit)) }
-                    TextButton(
-                        enabled = actionsExpanded,
-                        onClick = onRemove,
-                        contentPadding = PaddingValues(horizontal = 6.dp),
-                    ) { Text(stringResource(R.string.delete)) }
+                    QueueActionButton(
+                        R.string.chat_page_queue_send_now,
+                        !actionsExpanded && !isPriority,
+                        compact,
+                        onSendImmediately,
+                    )
                 }
-            } else {
-                TextButton(
-                    enabled = !actionsExpanded && !isPriority,
-                    onClick = onSendImmediately,
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) { Text(stringResource(R.string.chat_page_queue_send_now)) }
+            }
+            IconButton(
+                onClick = onToggleActions,
+                modifier = Modifier.size(if (compact) 40.dp else 48.dp),
+            ) {
+                Icon(
+                    HugeIcons.MoreVertical,
+                    contentDescription = stringResource(R.string.chat_page_queue_actions),
+                    modifier = Modifier.size(if (compact) 18.dp else 24.dp),
+                )
             }
         }
-        IconButton(onClick = onToggleActions) {
-            Icon(
-                HugeIcons.MoreVertical,
-                contentDescription = stringResource(R.string.chat_page_queue_actions),
-            )
-        }
+    }
+}
+
+@Composable
+private fun QueueActionButton(label: Int, enabled: Boolean, compact: Boolean, onClick: () -> Unit) {
+    TextButton(
+        modifier = if (compact) Modifier.size(width = 48.dp, height = 40.dp) else Modifier,
+        enabled = enabled,
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = if (compact) 4.dp else 6.dp),
+    ) {
+        Text(
+            stringResource(label),
+            style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+        )
     }
 }
 
