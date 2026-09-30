@@ -10,6 +10,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -64,13 +65,21 @@ class FilesManager(
         mimeType: String = "application/octet-stream",
     ): ManagedFileEntity = withContext(Dispatchers.IO) {
         val target = createTargetFile(folder, displayName, mimeType)
-        target.writeBytes(bytes)
-        createManagedFileEntity(
-            folder = folder,
-            file = target,
-            displayName = displayName,
-            mimeType = mimeType,
-        )
+        try {
+            target.writeBytes(bytes)
+            createManagedFileEntity(
+                folder = folder,
+                file = target,
+                displayName = displayName,
+                mimeType = mimeType,
+            )
+        } catch (e: Exception) {
+            withContext(NonCancellable) {
+                runCatching { repository.deleteByPath(buildRelativePath(folder, target)) }
+                target.delete()
+            }
+            throw e
+        }
     }
 
     suspend fun saveManagedText(

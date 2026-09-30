@@ -251,9 +251,10 @@ class ChatVM(
     fun handleToolApproval(
         toolCallId: String,
         approved: Boolean,
-        reason: String = ""
+        reason: String = "",
+        editedPrompt: String? = null,
     ) {
-        chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
+        chatService.handleToolApproval(_conversationId, toolCallId, approved, reason, editedPrompt = editedPrompt)
     }
 
     fun handleToolAnswer(

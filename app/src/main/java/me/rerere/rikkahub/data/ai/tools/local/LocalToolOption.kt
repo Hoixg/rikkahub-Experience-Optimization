@@ -6,6 +6,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed class LocalToolOption {
     @Serializable
+    @SerialName("image_generation")
+    data object ImageGeneration : LocalToolOption()
+
+    @Serializable
     @SerialName("javascript_engine")
     data object JavascriptEngine : LocalToolOption()
 

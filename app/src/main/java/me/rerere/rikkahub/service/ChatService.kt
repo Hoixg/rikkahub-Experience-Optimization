@@ -54,10 +54,14 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
+import me.rerere.rikkahub.data.ai.tools.applyToolApprovalDecision
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
+import me.rerere.rikkahub.data.ai.tools.local.imageToolChatModel
 import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
+import me.rerere.rikkahub.data.ai.transformers.ImageToolResultTransformer
 import me.rerere.rikkahub.data.ai.transformers.PlaceholderTransformer
 import me.rerere.rikkahub.data.ai.transformers.PromptInjectionTransformer
 import me.rerere.rikkahub.data.ai.transformers.RegexOutputTransformer
@@ -618,6 +622,7 @@ class ChatService(
         approved: Boolean,
         reason: String = "",
         answer: String? = null,
+        editedPrompt: String? = null,
     ) = synchronized(sessionManager.getOrCreate(conversationId)) {
         val session = sessionManager.getOrCreate(conversationId)
         val previousJob = session.getJob()
@@ -639,12 +644,6 @@ class ChatService(
                     if (conversation.currentMessages.none { message ->
                             message.getTools().any { it.toolCallId == toolCallId && it.isPending }
                         }) return@afterPreviousGeneration
-                    val newApprovalState = when {
-                        answer != null -> ToolApprovalState.Answered(answer)
-                        approved -> ToolApprovalState.Approved
-                        else -> ToolApprovalState.Denied(reason)
-                    }
-
                     // Update the tool approval state
                     val updatedNodes = conversation.messageNodes.map { node ->
                         node.copy(
@@ -653,7 +652,7 @@ class ChatService(
                                     parts = msg.parts.map { part ->
                                         when {
                                             part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                                part.copy(approvalState = newApprovalState)
+                                                applyToolApprovalDecision(part, approved, reason, answer, editedPrompt)
                                             }
 
                                             else -> part
@@ -704,6 +703,7 @@ class ChatService(
             initialConversation.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
         )
             ?: throw IllegalStateException("No chat model selected")
+        val requestModel = imageToolChatModel(model, LocalToolOption.ImageGeneration in assistant.localTools)
 
         val senderName = if (assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }
@@ -719,7 +719,8 @@ class ChatService(
 
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty()) {
+                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty() ||
+                    LocalToolOption.ImageGeneration in assistant.localTools) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
                         conversationId,
@@ -739,8 +740,9 @@ class ChatService(
                 chatToolFactory.createTools(
                     settings = settings,
                     assistant = assistant,
-                    model = model,
+                    model = requestModel,
                     workspaceCwd = conversation.workspaceCwd,
+                    getMessages = { getConversationFlow(conversationId).value.currentMessages },
                 )
             } catch (error: InvalidMcpServerNamesException) {
                 sessionManager.get(conversationId)?.messageQueue?.pause()
@@ -760,7 +762,7 @@ class ChatService(
             val session = sessionManager.getOrCreate(conversationId)
             generationLoop.generateText(
                 settings = settings,
-                model = model,
+                model = requestModel,
                 processingStatus = session.processingStatus,
                 messages = requestWindow.messages,
                 assistant = assistant,
@@ -779,6 +781,7 @@ class ChatService(
                     addAll(inputTransformers)
                     add(templateTransformer)
                     add(workspaceReminderTransformer)
+                    add(ImageToolResultTransformer)
                 },
                 outputTransformers = outputTransformers,
                 tools = tools,

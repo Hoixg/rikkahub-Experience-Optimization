@@ -163,6 +163,20 @@ private fun AssistantLocalToolContent(
         CardGroup {
             item(
                 headlineContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_image_generation_title))
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.assistant_page_local_tools_image_generation_desc))
+                },
+                trailingContent = {
+                    Switch(
+                        checked = LocalToolOption.ImageGeneration in assistant.localTools,
+                        onCheckedChange = { toggleLocalTool(LocalToolOption.ImageGeneration, it) },
+                    )
+                },
+            )
+            item(
+                headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_javascript_engine_title))
                 },
                 supportingContent = {

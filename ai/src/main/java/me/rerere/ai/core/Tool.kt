@@ -15,6 +15,8 @@ data class Tool(
     val parameters: () -> InputSchema? = { null },
     val systemPrompt: (model: Model, messages: List<UIMessage>) -> String = { _, _ -> "" },
     val needsApproval: (JsonElement) -> Boolean = { false },
+    /** Resolve and freeze arguments before approval. Never performs the tool's external action. */
+    val prepareArguments: suspend (JsonElement) -> JsonElement = { it },
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
 

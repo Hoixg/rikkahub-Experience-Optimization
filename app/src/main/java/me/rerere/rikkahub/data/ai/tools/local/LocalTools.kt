@@ -2,6 +2,8 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
 import me.rerere.ai.core.Tool
+import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.data.ai.image.ImageGenerationService
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
@@ -16,6 +18,7 @@ class LocalTools(
     private val storageGrantStore: StorageVolumeGrantStore,
     private val safPickerResultBuffer: SafPickerResultBuffer,
     private val termuxPreferences: TermuxPreferences,
+    private val imageGenerationService: ImageGenerationService,
 ) {
     val javascriptTool by lazy { buildJavascriptTool() }
 
@@ -37,8 +40,20 @@ class LocalTools(
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
 
-    fun getTools(options: List<LocalToolOption>): List<Tool> {
+    fun getTools(
+        options: List<LocalToolOption>,
+        getMessages: () -> List<UIMessage> = { emptyList() },
+        allowImageGeneration: Boolean = false,
+    ): List<Tool> {
         val tools = mutableListOf<Tool>()
+        if (allowImageGeneration && LocalToolOption.ImageGeneration in options) {
+            tools.add(buildImageGenerationTool(
+                getSettings = { settingsStore.settingsFlow.value },
+                getMessages = getMessages,
+                generate = { imageGenerationService.generateForChat(settingsStore.settingsFlow.value, it) },
+                errorMessage = { context.getString(it.resourceId) },
+            ))
+        }
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
         }

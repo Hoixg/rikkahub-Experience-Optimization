@@ -43,6 +43,8 @@ import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.ai.limits.ToolRuntimeLimits
 import me.rerere.rikkahub.data.ai.tools.HardlineCommandGuard
+import me.rerere.rikkahub.data.ai.tools.prepareToolApproval
+import me.rerere.rikkahub.data.ai.tools.executeToolWithApproval
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findRequestProvider
@@ -211,11 +213,10 @@ class GenerationLoop(
                                 )
                             )
                         }
-                        // Tool needs approval and state is Auto -> set to Pending
-                        toolDef?.needsApproval(tool.inputAsJson()) == true &&
-                            tool.approvalState is ToolApprovalState.Auto -> {
-                            hasPendingApproval = true
-                            tool.copy(approvalState = ToolApprovalState.Pending)
+                        tool.approvalState is ToolApprovalState.Auto -> {
+                            prepareToolApproval(tool, toolDef).also {
+                                if (it.isPending) hasPendingApproval = true
+                            }
                         }
                         // State is Pending -> keep waiting
                         tool.approvalState is ToolApprovalState.Pending -> {
@@ -258,6 +259,10 @@ class GenerationLoop(
             val executedTools = arrayListOf<UIMessagePart.Tool>()
             var budgetExhausted = false
             toolsToProcess.forEach { tool ->
+                if (tool.isExecuted) {
+                    executedTools += tool
+                    return@forEach
+                }
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
                         // Tool was denied by user
@@ -346,7 +351,7 @@ class GenerationLoop(
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = withTimeoutOrNull(remainingBudgetMs) {
-                                toolDef.execute(args)
+                                executeToolWithApproval(tool, toolDef, args)
                             } ?: listOf(
                                 UIMessagePart.Text(
                                     json.encodeToString(

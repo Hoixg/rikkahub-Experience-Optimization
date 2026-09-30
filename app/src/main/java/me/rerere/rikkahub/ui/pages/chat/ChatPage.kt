@@ -591,8 +591,8 @@ private fun ChatPageContent(
                         chatListState.requestScrollToItem(index)
                     }
                 },
-                onToolApproval = { toolCallId, approved, reason ->
-                    vm.handleToolApproval(toolCallId, approved, reason)
+                onToolApproval = { toolCallId, approved, reason, editedPrompt ->
+                    vm.handleToolApproval(toolCallId, approved, reason, editedPrompt)
                 },
                 onToolAnswer = { toolCallId, answer ->
                     vm.handleToolAnswer(toolCallId, answer)

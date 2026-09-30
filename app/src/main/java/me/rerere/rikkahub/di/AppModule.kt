@@ -3,6 +3,7 @@ package me.rerere.rikkahub.di
 import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
+import me.rerere.rikkahub.data.ai.image.ImageGenerationService
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.preferences.TermuxPreferences
 import me.rerere.rikkahub.data.ai.tools.local.SafPickerResultBuffer
@@ -28,8 +29,9 @@ val appModule = module {
 
     single { TermuxPreferences(get()) }
     single {
-        LocalTools(get(), get(), get(), get(), get(), get(), get())
+        LocalTools(get(), get(), get(), get(), get(), get(), get(), get())
     }
+    single { ImageGenerationService(get(), get(), get(), get(), get()) }
     single { StorageVolumeGrantStore(get()) }
     single { SafPickerResultBuffer() }
 
