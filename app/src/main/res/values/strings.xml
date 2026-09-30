@@ -1403,11 +1403,11 @@
   <string name="chat_page_queue_remove">Remove</string>
   <string name="chat_page_queue_edit_title">Edit queued message</string>
   <string name="chat_page_queue_paused_count">Queue paused · %1$d</string>
+  <string name="chat_page_queue_paused_compact_count">Paused · %1$d</string>
   <string name="chat_page_queue_pending_count">Queued · %1$d</string>
   <string name="chat_page_queue_send_now">Send</string>
   <string name="chat_page_queue_actions">Message actions</string>
   <string name="chat_page_queue_reorder">Long press to reorder</string>
-  <string name="chat_page_queue_more_count">Show %1$d more</string>
   <string name="chat_page_queue_priority">Next to send</string>
   <string name="chat_page_queue_expand">Expand queued messages</string>
   <string name="chat_page_queue_collapse">Collapse queued messages</string>

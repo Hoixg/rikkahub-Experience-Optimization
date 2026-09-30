@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.uuid.Uuid
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.rikkahub.R
@@ -53,8 +54,6 @@ import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-
-private const val INLINE_QUEUE_LIMIT = 2
 
 @Composable
 internal fun MessageQueuePanel(
@@ -108,6 +107,7 @@ internal fun MessageQueuePanel(
                     setContents(message.parts)
                 }
                 actionsMessageId = null
+                sheetOpen = true
             }
         }
     }
@@ -121,35 +121,21 @@ internal fun MessageQueuePanel(
         onSendImmediately(id)
     }
 
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-        modifier = Modifier.fillMaxWidth().testTag("chat_message_queue"),
-    ) {
-        Column(modifier = Modifier.padding(3.dp)) {
-            QueueHeader(
-                state = state,
-                onResume = onResume,
-                hiddenCount = (state.messages.size - INLINE_QUEUE_LIMIT).coerceAtLeast(0),
-                onShowAll = { sheetOpen = true },
-            )
-            QueueList(
-                messages = state.messages.take(INLINE_QUEUE_LIMIT),
-                priorityMessageId = state.priorityMessageId,
-                editingId = if (sheetOpen) null else editingId,
-                editInput = editInput,
-                actionsMessageId = actionsMessageId,
-                onToggleActions = { id -> actionsMessageId = id.takeUnless { it == actionsMessageId } },
-                onBeginEdit = beginEdit,
-                onFinishEdit = ::finishEdit,
-                onRemove = remove,
-                onSendImmediately = send,
-                onMove = onMove,
-                maxHeight = 120.dp,
-            )
-        }
-    }
+    val firstMessage = state.messages.first()
+    CompactQueueBar(
+        state = state,
+        actionsExpanded = actionsMessageId == firstMessage.id,
+        onShowAll = {
+            actionsMessageId = null
+            sheetOpen = true
+        },
+        onToggleActions = {
+            actionsMessageId = firstMessage.id.takeUnless { it == actionsMessageId }
+        },
+        onBeginEdit = { beginEdit(firstMessage.id) },
+        onRemove = { remove(firstMessage.id) },
+        onSendImmediately = { send(firstMessage.id) },
+    )
 
     if (sheetOpen) {
         ModalBottomSheet(onDismissRequest = ::dismissSheet) {
@@ -175,11 +161,80 @@ internal fun MessageQueuePanel(
 }
 
 @Composable
+private fun CompactQueueBar(
+    state: MessageQueueState,
+    actionsExpanded: Boolean,
+    onShowAll: () -> Unit,
+    onToggleActions: () -> Unit,
+    onBeginEdit: () -> Unit,
+    onRemove: () -> Unit,
+    onSendImmediately: () -> Unit,
+) {
+    val firstMessage = state.messages.first()
+    val isPriority = state.priorityMessageId == firstMessage.id
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxWidth().testTag("chat_message_queue"),
+    ) {
+        Row(
+            modifier = Modifier.heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f)
+                    .clickable(onClickLabel = stringResource(R.string.chat_page_queue_expand), onClick = onShowAll)
+                    .heightIn(min = 48.dp)
+                    .padding(start = 10.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        if (state.paused) R.string.chat_page_queue_paused_compact_count
+                        else R.string.chat_page_queue_pending_count,
+                        state.messages.size,
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (state.paused) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                Icon(
+                    HugeIcons.ArrowDown01,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = if (isPriority) {
+                        "${stringResource(R.string.chat_page_queue_priority)} · ${messagePreview(firstMessage)}"
+                    } else messagePreview(firstMessage),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isPriority) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            QueuedMessageActions(
+                actionsExpanded = actionsExpanded,
+                isPriority = isPriority,
+                onToggleActions = onToggleActions,
+                onBeginEdit = onBeginEdit,
+                onRemove = onRemove,
+                onSendImmediately = onSendImmediately,
+            )
+        }
+    }
+}
+
+@Composable
 private fun QueueHeader(
     state: MessageQueueState,
     onResume: () -> Unit,
-    hiddenCount: Int = 0,
-    onShowAll: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -197,14 +252,6 @@ private fun QueueHeader(
         )
         if (state.paused) {
             TextButton(onClick = onResume) { Text(stringResource(R.string.chat_page_queue_resume)) }
-        }
-        if (hiddenCount > 0) {
-            Text(
-                text = stringResource(R.string.chat_page_queue_more_count, hiddenCount),
-                modifier = Modifier.clickable(onClick = onShowAll).padding(horizontal = 6.dp, vertical = 3.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }
@@ -314,46 +361,14 @@ private fun QueuedMessageRow(
                     }
                 }
                 if (!isEditing) {
-                    AnimatedContent(
-                        targetState = actionsExpanded,
-                        transitionSpec = {
-                            if (targetState) {
-                                (slideInHorizontally { it } + fadeIn())
-                                    .togetherWith(slideOutHorizontally { -it } + fadeOut())
-                            } else {
-                                (slideInHorizontally { -it } + fadeIn())
-                                    .togetherWith(slideOutHorizontally { it } + fadeOut())
-                            }.using(SizeTransform(clip = false))
-                        },
-                        label = "Queued message actions",
-                    ) { showActions ->
-                        if (showActions) {
-                            Row {
-                                TextButton(
-                                    enabled = actionsExpanded,
-                                    onClick = onBeginEdit,
-                                    contentPadding = PaddingValues(horizontal = 6.dp),
-                                ) { Text(stringResource(R.string.edit)) }
-                                TextButton(
-                                    enabled = actionsExpanded,
-                                    onClick = onRemove,
-                                    contentPadding = PaddingValues(horizontal = 6.dp),
-                                ) { Text(stringResource(R.string.delete)) }
-                            }
-                        } else {
-                            TextButton(
-                                enabled = !actionsExpanded && !isPriority,
-                                onClick = onSendImmediately,
-                                contentPadding = PaddingValues(horizontal = 8.dp),
-                            ) { Text(stringResource(R.string.chat_page_queue_send_now)) }
-                        }
-                    }
-                    IconButton(onClick = onToggleActions) {
-                        Icon(
-                            HugeIcons.MoreVertical,
-                            contentDescription = stringResource(R.string.chat_page_queue_actions),
-                        )
-                    }
+                    QueuedMessageActions(
+                        actionsExpanded = actionsExpanded,
+                        isPriority = isPriority,
+                        onToggleActions = onToggleActions,
+                        onBeginEdit = onBeginEdit,
+                        onRemove = onRemove,
+                        onSendImmediately = onSendImmediately,
+                    )
                 }
             }
             if (isEditing && editInput != null) {
@@ -374,6 +389,59 @@ private fun QueuedMessageRow(
                     ) { Text(stringResource(R.string.chat_page_save)) }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QueuedMessageActions(
+    actionsExpanded: Boolean,
+    isPriority: Boolean,
+    onToggleActions: () -> Unit,
+    onBeginEdit: () -> Unit,
+    onRemove: () -> Unit,
+    onSendImmediately: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        AnimatedContent(
+            targetState = actionsExpanded,
+            transitionSpec = {
+                if (targetState) {
+                    (slideInHorizontally { it } + fadeIn())
+                        .togetherWith(slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn())
+                        .togetherWith(slideOutHorizontally { it } + fadeOut())
+                }.using(SizeTransform(clip = false))
+            },
+            label = "Queued message actions",
+        ) { showActions ->
+            if (showActions) {
+                Row {
+                    TextButton(
+                        enabled = actionsExpanded,
+                        onClick = onBeginEdit,
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                    ) { Text(stringResource(R.string.edit)) }
+                    TextButton(
+                        enabled = actionsExpanded,
+                        onClick = onRemove,
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                    ) { Text(stringResource(R.string.delete)) }
+                }
+            } else {
+                TextButton(
+                    enabled = !actionsExpanded && !isPriority,
+                    onClick = onSendImmediately,
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) { Text(stringResource(R.string.chat_page_queue_send_now)) }
+            }
+        }
+        IconButton(onClick = onToggleActions) {
+            Icon(
+                HugeIcons.MoreVertical,
+                contentDescription = stringResource(R.string.chat_page_queue_actions),
+            )
         }
     }
 }
