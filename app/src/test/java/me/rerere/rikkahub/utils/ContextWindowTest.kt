@@ -109,17 +109,24 @@ class ContextWindowTest {
     fun requestWindowUsesCheckpointBoundary() {
         val first = node(message("old"), message("old-selected"))
         val second = node(message("new", MessageRole.ASSISTANT))
-        val conversation = Conversation(
+        val initial = Conversation(
             assistantId = Uuid.random(),
             messageNodes = listOf(first, second),
-            compressionSummaries = listOf(CompressionSummary(content = "summary", boundaryNodeId = first.id)),
+        )
+        val conversation = initial.copy(
+            compressionSummaries = listOf(CompressionSummary(
+                content = "summary",
+                boundaryNodeId = first.id,
+                sourceFingerprint = initial.compressionSourceFingerprint(first.id),
+            )),
         )
 
-        val window = conversation.requestWindowMessages()
+        val requestContext = conversation.requestContextForGeneration()
+        val window = requestContext.messages
 
-        assertEquals(2, window.size)
-        assertTrue(window.first().isSynthetic)
-        assertTrue(window.first().isCompactionCheckpoint())
+        assertEquals("summary", requestContext.checkpointContent)
+        assertEquals(listOf(second.currentMessage), window)
+        assertFalse(window.any { it.isSynthetic || it.isCompactionCheckpoint() })
         assertEquals("new", (window.last().parts.single() as UIMessagePart.Text).text)
         assertEquals(second.currentMessage, window.last())
     }
@@ -148,7 +155,10 @@ class ContextWindowTest {
         assertEquals(recent.currentMessage, updated.messageNodes[2].currentMessage)
         assertEquals(reply, updated.messageNodes[3].currentMessage)
         assertEquals(checkpoint, updated.activeCompression())
-        assertTrue(updated.requestWindowMessages().first().isCompactionCheckpoint())
+        val updatedRequestContext = updated.requestContextForGeneration()
+        assertEquals("compressed prefix", updatedRequestContext.checkpointContent)
+        assertEquals(listOf(recent.currentMessage, reply), updatedRequestContext.messages)
+        assertFalse(updatedRequestContext.messages.any { it.isSynthetic || it.isCompactionCheckpoint() })
         assertEquals(listOf(recent, updated.messageNodes[3]), updated.windowNodes())
         assertEquals(listOf(recent), selectNodesForCompaction(updated.windowNodes(), keepBudgetTokens = 0))
     }
@@ -246,23 +256,30 @@ class ContextWindowTest {
             .toJavaInstant()
         val later = LocalDateTime(2026, 1, 1, 11, 0)
         val model = Model(modelId = "context-test-model")
-        val conversation = Conversation(
+        val boundary = node(message("old"))
+        val initial = Conversation(
             assistantId = Uuid.random(),
-            messageNodes = listOf(node(message("new", MessageRole.ASSISTANT).copy(modelId = model.id))),
-            compressionSummaries = listOf(
-                CompressionSummary(content = "summary", boundaryNodeId = Uuid.random(), createdAt = checkpointAt),
-            ),
+            messageNodes = listOf(boundary),
         )
-        val usageMessage = conversation.currentMessages.single().copy(
+        val checkpoint = CompressionSummary(
+            content = "summary",
+            boundaryNodeId = boundary.id,
+            createdAt = checkpointAt,
+            sourceFingerprint = initial.compressionSourceFingerprint(boundary.id),
+        )
+        val usageMessage = message("new", MessageRole.ASSISTANT).copy(
+            modelId = model.id,
             createdAt = later,
             finishedAt = later,
-            usage = TokenUsage(promptTokens = 123),
+            usage = TokenUsage(promptTokens = 123, completionTokens = 7),
         )
-        val usageConversation = conversation.copy(
-            messageNodes = listOf(node(usageMessage)),
+        val usageConversation = initial.copy(
+            messageNodes = listOf(boundary, node(usageMessage)),
+            compressionSummaries = listOf(checkpoint),
         )
 
-        assertEquals(123, usageConversation.estimateWindowTokens(model))
+        assertEquals(checkpoint, usageConversation.activeCompressionForRequest())
+        assertEquals(130, usageConversation.estimateWindowTokens(model))
     }
 
     @Test
