@@ -324,7 +324,6 @@
   <string name="error_title_send_message">Message send failed</string>
   <string name="error_title_compress_context">Context compaction failed</string>
   <string name="error_compress_context_failed">Automatic context compaction failed. Your message is still queued; fix the connection or model settings, then resume the queue.</string>
-  <string name="error_compress_context_timeout">Automatic context compaction timed out after 5 minutes. Your message is still queued; check the connection and resume the queue.</string>
   <string name="error_compress_context_still_too_large">The conversation still exceeds this model’s context window after compaction. Choose a model with a larger context window or shorten the conversation.</string>
   <string name="error_compress_context_changed">The conversation changed while it was being summarized. No checkpoint was saved; try sending again.</string>
   <string name="error_title_tool_approval">Tool call processing failed</string>

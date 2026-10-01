@@ -28,9 +28,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
@@ -123,7 +121,6 @@ private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
 private const val AUTO_COMPRESS_INPUT_BUDGET_MAX = 12_000
 private const val AUTO_COMPRESS_CONCURRENCY = 2
 private const val AUTO_COMPRESS_REDUCE_LIMIT = 4
-private const val AUTO_COMPRESS_TIMEOUT_MS = 5 * 60 * 1_000L
 
 private val forkTitleSuffixRegex = Regex("""\((\d+)\)$""")
 
@@ -1227,128 +1224,121 @@ class ChatService(
             context.getString(R.string.error_compress_context_failed),
         )
         return try {
-            withTimeout(AUTO_COMPRESS_TIMEOUT_MS) {
-                val provider = model.findRequestProvider(settings.providers)
-                    ?: throw IllegalStateException("Provider not found")
-                val providerHandler = providerManager.getProviderByType(provider)
-                val inputBudget = (model.effectiveContextLength() - 1_024)
-                    .coerceIn(512, AUTO_COMPRESS_INPUT_BUDGET_MAX)
-                val priorSummary = conversation.activeCompressionForRequest()?.content.orEmpty()
-                val priorTokens = estimateTextTokenCount(priorSummary)
-                val contentBudget = inputBudget - priorTokens - 512
-                if (contentBudget < 128) {
-                    throw IllegalStateException("The existing checkpoint leaves no room for a safe merge")
-                }
+            val provider = model.findRequestProvider(settings.providers)
+                ?: throw IllegalStateException("Provider not found")
+            val providerHandler = providerManager.getProviderByType(provider)
+            val inputBudget = (model.effectiveContextLength() - 1_024)
+                .coerceIn(512, AUTO_COMPRESS_INPUT_BUDGET_MAX)
+            val priorSummary = conversation.activeCompressionForRequest()?.content.orEmpty()
+            val priorTokens = estimateTextTokenCount(priorSummary)
+            val contentBudget = inputBudget - priorTokens - 512
+            if (contentBudget < 128) {
+                throw IllegalStateException("The existing checkpoint leaves no room for a safe merge")
+            }
 
-                val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
-                val reduceTarget = contentBudget.coerceAtMost(AUTO_COMPRESS_TARGET_TOKENS).coerceAtLeast(128)
-                val sourceChunks = chunkCompactionTexts(
-                    nodesToCompress.map { it.currentMessage.toCompactionText() },
-                    (inputBudget - 512).coerceAtLeast(1),
-                )
-                val semaphore = Semaphore(AUTO_COMPRESS_CONCURRENCY)
-                val progressMutex = Mutex()
-                var completedMapChunks = 0
+            val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
+            val reduceTarget = contentBudget.coerceAtMost(AUTO_COMPRESS_TARGET_TOKENS).coerceAtLeast(128)
+            val sourceChunks = chunkCompactionTexts(
+                nodesToCompress.map { it.currentMessage.toCompactionText() },
+                (inputBudget - 512).coerceAtLeast(1),
+            )
+            val semaphore = Semaphore(AUTO_COMPRESS_CONCURRENCY)
+            val progressMutex = Mutex()
+            var completedMapChunks = 0
 
+            processingStatus.value = context.getString(
+                R.string.chat_page_compacting_context_map_progress,
+                0,
+                sourceChunks.size,
+            )
+
+            suspend fun reportMapChunkComplete() = progressMutex.withLock {
+                completedMapChunks++
                 processingStatus.value = context.getString(
                     R.string.chat_page_compacting_context_map_progress,
-                    0,
+                    completedMapChunks,
                     sourceChunks.size,
                 )
+            }
 
-                suspend fun reportMapChunkComplete() = progressMutex.withLock {
-                    completedMapChunks++
-                    processingStatus.value = context.getString(
-                        R.string.chat_page_compacting_context_map_progress,
-                        completedMapChunks,
-                        sourceChunks.size,
+            suspend fun summarize(content: String, targetTokens: Int, additionalContext: String = ""): String =
+                semaphore.withPermit {
+                    val promptTemplate = settings.compressPrompt
+                    val renderedPrompt = promptTemplate.applyPlaceholders(
+                        "content" to content,
+                        "target_tokens" to targetTokens.toString(),
+                        "additional_context" to additionalContext,
+                        "locale" to Locale.getDefault().displayName,
                     )
-                }
-
-                suspend fun summarize(content: String, targetTokens: Int, additionalContext: String = ""): String =
-                    semaphore.withPermit {
-                        val promptTemplate = settings.compressPrompt
-                        val renderedPrompt = promptTemplate.applyPlaceholders(
-                            "content" to content,
-                            "target_tokens" to targetTokens.toString(),
-                            "additional_context" to additionalContext,
-                            "locale" to Locale.getDefault().displayName,
-                        )
-                        val missingInputs = buildString {
-                            if (!promptTemplate.contains("{content}")) {
-                                appendLine()
-                                appendLine("Conversation content to summarize:")
-                                appendLine(content)
-                            }
-                            if (additionalContext.isNotBlank() &&
-                                !promptTemplate.contains("{additional_context}")
-                            ) {
-                                appendLine()
-                                appendLine(additionalContext)
-                            }
+                    val missingInputs = buildString {
+                        if (!promptTemplate.contains("{content}")) {
+                            appendLine()
+                            appendLine("Conversation content to summarize:")
+                            appendLine(content)
                         }
-                        val prompt = renderedPrompt + missingInputs
-                        providerHandler.generateText(
-                            providerSetting = provider,
-                            messages = listOf(UIMessage.user(prompt)),
-                            params = backgroundTextGenerationParams(model, conversationId),
-                        ).message.toText().trim().takeIf { it.isNotBlank() }
-                            ?: throw IllegalStateException("Empty compression result")
+                        if (additionalContext.isNotBlank() &&
+                            !promptTemplate.contains("{additional_context}")
+                        ) {
+                            appendLine()
+                            appendLine(additionalContext)
+                        }
                     }
-
-                var summaries = coroutineScope {
-                    sourceChunks.map { chunk ->
-                        async { summarize(chunk, mapTarget).also { reportMapChunkComplete() } }
-                    }.awaitAll()
+                    val prompt = renderedPrompt + missingInputs
+                    providerHandler.generateText(
+                        providerSetting = provider,
+                        messages = listOf(UIMessage.user(prompt)),
+                        params = backgroundTextGenerationParams(model, conversationId),
+                    ).message.toText().trim().takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("Empty compression result")
                 }
-                var reducePasses = 0
-                while (summaries.sumOf(::estimateTextTokenCount) > contentBudget) {
-                    if (reducePasses++ >= AUTO_COMPRESS_REDUCE_LIMIT) {
-                        throw IllegalStateException("Could not reduce checkpoint to the model input budget")
-                    }
-                    val groups = chunkCompactionTexts(summaries, (inputBudget - 512).coerceAtLeast(1))
-                    val previousSize = summaries.sumOf(::estimateTextTokenCount)
-                    var completedReduceGroups = 0
-                    processingStatus.value = context.getString(
-                        R.string.chat_page_compacting_context_reduce_progress,
-                        reducePasses,
-                        completedReduceGroups,
-                        groups.size,
-                    )
-                    summaries = coroutineScope {
-                        groups.map { group ->
-                            async {
-                                summarize(group, reduceTarget).also {
-                                    progressMutex.withLock {
-                                        completedReduceGroups++
-                                        processingStatus.value = context.getString(
-                                            R.string.chat_page_compacting_context_reduce_progress,
-                                            reducePasses,
-                                            completedReduceGroups,
-                                            groups.size,
-                                        )
-                                    }
+
+            var summaries = coroutineScope {
+                sourceChunks.map { chunk ->
+                    async { summarize(chunk, mapTarget).also { reportMapChunkComplete() } }
+                }.awaitAll()
+            }
+            var reducePasses = 0
+            while (summaries.sumOf(::estimateTextTokenCount) > contentBudget) {
+                if (reducePasses++ >= AUTO_COMPRESS_REDUCE_LIMIT) {
+                    throw IllegalStateException("Could not reduce checkpoint to the model input budget")
+                }
+                val groups = chunkCompactionTexts(summaries, (inputBudget - 512).coerceAtLeast(1))
+                val previousSize = summaries.sumOf(::estimateTextTokenCount)
+                var completedReduceGroups = 0
+                processingStatus.value = context.getString(
+                    R.string.chat_page_compacting_context_reduce_progress,
+                    reducePasses,
+                    completedReduceGroups,
+                    groups.size,
+                )
+                summaries = coroutineScope {
+                    groups.map { group ->
+                        async {
+                            summarize(group, reduceTarget).also {
+                                progressMutex.withLock {
+                                    completedReduceGroups++
+                                    processingStatus.value = context.getString(
+                                        R.string.chat_page_compacting_context_reduce_progress,
+                                        reducePasses,
+                                        completedReduceGroups,
+                                        groups.size,
+                                    )
                                 }
                             }
-                        }.awaitAll()
-                    }
-                    val reducedSize = summaries.sumOf(::estimateTextTokenCount)
-                    if (reducedSize >= previousSize && groups.size >= summaries.size) {
-                        throw IllegalStateException("Checkpoint reduction did not converge")
-                    }
+                        }
+                    }.awaitAll()
                 }
-
-                processingStatus.value = context.getString(R.string.chat_page_compacting_context_finalize)
-                summarize(
-                    content = summaries.joinToString("\n\n"),
-                    targetTokens = reduceTarget,
-                    additionalContext = priorCheckpointMergeContext(priorSummary),
-                )
+                val reducedSize = summaries.sumOf(::estimateTextTokenCount)
+                if (reducedSize >= previousSize && groups.size >= summaries.size) {
+                    throw IllegalStateException("Checkpoint reduction did not converge")
+                }
             }
-        } catch (error: TimeoutCancellationException) {
-            throw ContextCompactionException(
-                context.getString(R.string.error_compress_context_timeout),
-                error,
+
+            processingStatus.value = context.getString(R.string.chat_page_compacting_context_finalize)
+            summarize(
+                content = summaries.joinToString("\n\n"),
+                targetTokens = reduceTarget,
+                additionalContext = priorCheckpointMergeContext(priorSummary),
             )
         } catch (error: CancellationException) {
             throw error
