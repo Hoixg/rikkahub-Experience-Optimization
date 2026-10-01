@@ -1377,4 +1377,7 @@
   <string name="about_page_feedback">피드백</string>
   <string name="about_page_upstream">원본 프로젝트: RikkaHub</string>
   <string name="setting_page_upstream_community">원본 커뮤니티: RikkaHub</string>
+  <string name="error_fast_model_not_found">빠른 모델을 찾을 수 없습니다. 설정에서 하나를 선택해 주세요.</string>
+  <string name="error_fast_model_provider_not_found">빠른 모델의 제공자를 찾을 수 없습니다</string>
+  <string name="assistant_page_clone_with_memories">기억도 함께 복사</string>
 </resources>

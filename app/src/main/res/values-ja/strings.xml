@@ -1377,4 +1377,7 @@
   <string name="about_page_feedback">フィードバック</string>
   <string name="about_page_upstream">元のプロジェクト：RikkaHub</string>
   <string name="setting_page_upstream_community">元のコミュニティ：RikkaHub</string>
+  <string name="error_fast_model_not_found">高速モデルが見つかりません。設定で選択してください。</string>
+  <string name="error_fast_model_provider_not_found">高速モデルのプロバイダーが見つかりません</string>
+  <string name="assistant_page_clone_with_memories">記憶もコピー</string>
 </resources>

@@ -1528,4 +1528,7 @@
   <string name="about_page_feedback">反馈</string>
   <string name="about_page_upstream">上游项目：RikkaHub</string>
   <string name="setting_page_upstream_community">上游社群：RikkaHub</string>
+  <string name="error_fast_model_not_found">未找到快速模型。请在设置中选择一个。</string>
+  <string name="error_fast_model_provider_not_found">未找到快速模型的提供商</string>
+  <string name="assistant_page_clone_with_memories">同时复制记忆</string>
 </resources>
