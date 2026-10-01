@@ -77,6 +77,7 @@ import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.AppBranding
 import me.rerere.rikkahub.utils.joinQQGroup
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
@@ -289,6 +290,11 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         onClick = { navController.navigate(Screen.SettingAbout) },
                         leadingContent = { Icon(HugeIcons.Clapping01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_about_desc)) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_about)) },
+                    )
+                    item(
+                        onClick = { context.openUrl(AppBranding.UPSTREAM_URL) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_upstream_community)) },
                         trailingContent = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -322,7 +328,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                                 }
                             }
                         },
-                        headlineContent = { Text(stringResource(R.string.setting_page_about)) },
                     )
                     item(
                         onClick = {

@@ -48,6 +48,7 @@ import me.rerere.rikkahub.ui.components.easteregg.EmojiBurstHost
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.AppBranding
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
@@ -132,7 +133,7 @@ fun SettingAboutPage() {
                         )
 
                         Text(
-                            text = "RikkaHub",
+                            text = stringResource(R.string.app_name),
                             style = MaterialTheme.typography.displaySmall,
                         )
                     }
@@ -168,21 +169,33 @@ fun SettingAboutPage() {
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) {
                         item(
-                            onClick = { context.openUrl("https://rikka-ai.com/") },
+                            onClick = { context.openUrl(AppBranding.RELEASES_URL) },
                             leadingContent = { Icon(HugeIcons.Earth, null) },
-                            supportingContent = { Text("https://rikka-ai.com") },
-                            headlineContent = { Text(stringResource(R.string.about_page_website)) },
+                            supportingContent = { Text(AppBranding.RELEASES_URL) },
+                            headlineContent = { Text(stringResource(R.string.about_page_downloads)) },
                         )
                         item(
-                            onClick = { context.openUrl("https://github.com/rikkahub/rikkahub") },
+                            onClick = { context.openUrl(AppBranding.PROJECT_URL) },
                             leadingContent = { Icon(HugeIcons.Github, null) },
-                            supportingContent = { Text("https://github.com/rikkahub/rikkahub") },
+                            supportingContent = { Text(AppBranding.PROJECT_URL) },
                             headlineContent = { Text(stringResource(R.string.about_page_github)) },
                         )
                         item(
-                            onClick = { context.openUrl("https://github.com/rikkahub/rikkahub/blob/master/LICENSE") },
+                            onClick = { context.openUrl(AppBranding.ISSUES_URL) },
+                            leadingContent = { Icon(HugeIcons.Code, null) },
+                            supportingContent = { Text(AppBranding.ISSUES_URL) },
+                            headlineContent = { Text(stringResource(R.string.about_page_feedback)) },
+                        )
+                        item(
+                            onClick = { context.openUrl(AppBranding.UPSTREAM_URL) },
+                            leadingContent = { Icon(HugeIcons.Github, null) },
+                            supportingContent = { Text(AppBranding.UPSTREAM_URL) },
+                            headlineContent = { Text(stringResource(R.string.about_page_upstream)) },
+                        )
+                        item(
+                            onClick = { context.openUrl(AppBranding.LICENSE_URL) },
                             leadingContent = { Icon(HugeIcons.File02, null) },
-                            supportingContent = { Text("https://github.com/rikkahub/rikkahub/blob/master/LICENSE") },
+                            supportingContent = { Text(AppBranding.LICENSE_URL) },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )
                     }

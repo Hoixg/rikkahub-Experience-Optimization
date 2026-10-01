@@ -7,7 +7,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
-  <string name="app_name">RikkaHub Custom</string>
+  <string name="app_name">RikkaPlus</string>
   <string name="asr_button_content_description">Speech Recognition</string>
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>
@@ -310,10 +310,10 @@
   <string name="deep_thinking_seconds">Thought for %1$.1f seconds</string>
   <string name="delete">Delete</string>
   <string name="donate_page_afdian_desc">For 🇨🇳 users</string>
-  <string name="donate_page_donation_methods">Donation Methods</string>
+  <string name="donate_page_donation_methods">RikkaHub — Donation Methods</string>
   <string name="donate_page_kofi_desc">For Global Users</string>
-  <string name="donate_page_sponsor_list">Sponsor List</string>
-  <string name="donate_page_title">Donate</string>
+  <string name="donate_page_sponsor_list">RikkaHub — Sponsor List</string>
+  <string name="donate_page_title">Support the upstream author</string>
   <string name="edit">Edit</string>
   <string name="editing">Editing</string>
   <string name="emoji_picker_search_placeholder">Search emojis...</string>
@@ -845,10 +845,10 @@
   <string name="setting_page_preferences_network_proxy_invalid">Enter a valid proxy URL with a host and port.</string>
   <string name="setting_page_preferences_network_auto_retry">Automatic retry</string>
   <string name="setting_page_preferences_network_auto_retry_desc">Retry model requests up to 3 times when network errors occur.</string>
-  <string name="setting_page_documentation">Documentation</string>
+  <string name="setting_page_documentation">Upstream documentation: RikkaHub</string>
   <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
-  <string name="setting_page_donate">Donate</string>
-  <string name="setting_page_donate_desc">If you like it, sponsor the author\'s work</string>
+  <string name="setting_page_donate">Support the upstream author</string>
+  <string name="setting_page_donate_desc">These donations support re-ovo, the original RikkaHub developer.</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>
@@ -877,11 +877,11 @@
   <string name="setting_page_search_title">Search Service</string>
   <string name="setting_page_share">Share</string>
   <string name="setting_page_share_desc">Share this app with friends</string>
-  <string name="setting_page_share_text">RikkaHub - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
-  <string name="setting_page_sponsor_alert_confirm">Donate</string>
-  <string name="setting_page_sponsor_alert_desc">You have launched the app over 100 times! If you enjoy using it, please consider supporting the developer.</string>
+  <string name="setting_page_share_text">RikkaPlus - Open Source Android AI Assistant\n\nWebsite: https://github.com/Hoixg/rikkaplus/releases</string>
+  <string name="setting_page_sponsor_alert_confirm">Support the upstream author</string>
+  <string name="setting_page_sponsor_alert_desc">These donations support re-ovo, the original RikkaHub developer.</string>
   <string name="setting_page_sponsor_alert_dismiss">Not Now</string>
-  <string name="setting_page_sponsor_alert_title">Support the Developer</string>
+  <string name="setting_page_sponsor_alert_title">Support the upstream author</string>
   <string name="setting_page_theme_setting">Theme</string>
   <string name="setting_page_theme_setting_desc">Customize app color scheme</string>
   <string name="setting_theme_page_preset_themes">Preset Themes</string>
@@ -1530,4 +1530,8 @@
   <string name="chat_image_generation_configuration_changed">The approved image model configuration changed. Submit a new request for approval.</string>
   <string name="chat_image_generation_cancelled">Image request cancelled</string>
   <string name="chat_image_generation_approved_waiting">Image request approved · Waiting to run</string>
+  <string name="about_page_downloads">Downloads</string>
+  <string name="about_page_feedback">Feedback</string>
+  <string name="about_page_upstream">Upstream project: RikkaHub</string>
+  <string name="setting_page_upstream_community">Upstream community: RikkaHub</string>
 </resources>

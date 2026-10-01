@@ -7,7 +7,7 @@
   <string name="about_page_version">버전</string>
   <string name="about_page_website">웹사이트</string>
   <string name="add">추가</string>
-  <string name="app_name">RikkaHub Custom</string>
+  <string name="app_name">RikkaPlus</string>
   <string name="asr_button_content_description">음성 인식</string>
   <string name="asr_button_stop">중지</string>
   <string name="assistant_detail_basic_desc">이름, 아바타, 모델 및 매개변수 구성</string>
@@ -307,10 +307,10 @@
   <string name="deep_thinking_seconds">%1$.1f 초 동안 생각했습니다</string>
   <string name="delete">삭제</string>
   <string name="donate_page_afdian_desc">🇨🇳 사용자를 위한 후원</string>
-  <string name="donate_page_donation_methods">후원 방법</string>
+  <string name="donate_page_donation_methods">RikkaHub — 후원 방법</string>
   <string name="donate_page_kofi_desc">글로벌 사용자용</string>
-  <string name="donate_page_sponsor_list">후원자 목록</string>
-  <string name="donate_page_title">후원</string>
+  <string name="donate_page_sponsor_list">RikkaHub — 후원자 목록</string>
+  <string name="donate_page_title">원본 개발자 지원</string>
   <string name="edit">편집</string>
   <string name="editing">편집 중</string>
   <string name="emoji_picker_search_placeholder">이모지 검색...</string>
@@ -768,10 +768,10 @@
   <string name="setting_page_default_model_desc">각 기능의 기본 모델 설정</string>
   <string name="setting_page_display_setting">디스플레이 설정</string>
   <string name="setting_page_display_setting_desc">디스플레이 설정 관리</string>
-  <string name="setting_page_documentation">문서</string>
+  <string name="setting_page_documentation">원본 문서: RikkaHub</string>
   <string name="setting_page_documentation_desc">앱 사용법 및 도움말 문서 보기</string>
-  <string name="setting_page_donate">후원</string>
-  <string name="setting_page_donate_desc">앱이 마음에 드시면 제작자의 작업을 후원해 주세요</string>
+  <string name="setting_page_donate">원본 개발자 지원</string>
+  <string name="setting_page_donate_desc">이 후원은 RikkaHub 원본 개발자 re-ovo를 지원합니다.</string>
   <string name="setting_page_dynamic_color">동적 색상</string>
   <string name="setting_page_dynamic_color_desc">배경화면을 기반으로 앱 테마 색상을 동적으로 생성할지 여부</string>
   <string name="setting_page_extensions">확장 기능</string>
@@ -800,11 +800,11 @@
   <string name="setting_page_search_title">검색 서비스</string>
   <string name="setting_page_share">공유</string>
   <string name="setting_page_share_desc">앱을 친구들과 공유하기</string>
-  <string name="setting_page_share_text">RikkaHub - 오픈소스 Android AI 어시스턴트\n\n웹사이트: https://rikka-ai.com/</string>
-  <string name="setting_page_sponsor_alert_confirm">기부하기</string>
-  <string name="setting_page_sponsor_alert_desc">앱을 100번 이상 실행하셨네요! 만족스럽게 사용하고 계시다면 개발자를 후원해 주세요.</string>
+  <string name="setting_page_share_text">RikkaPlus - 오픈소스 Android AI 어시스턴트\n\n웹사이트: https://github.com/Hoixg/rikkaplus/releases</string>
+  <string name="setting_page_sponsor_alert_confirm">원본 개발자 지원</string>
+  <string name="setting_page_sponsor_alert_desc">이 후원은 RikkaHub 원본 개발자 re-ovo를 지원합니다.</string>
   <string name="setting_page_sponsor_alert_dismiss">나중에</string>
-  <string name="setting_page_sponsor_alert_title">개발자 지원하기</string>
+  <string name="setting_page_sponsor_alert_title">원본 개발자 지원</string>
   <string name="setting_page_theme_setting">테마</string>
   <string name="setting_page_theme_setting_desc">앱 색상 구성 사용자 지정</string>
   <string name="setting_theme_page_preset_themes">프리셋 테마</string>
@@ -1373,4 +1373,8 @@
   <string name="chart_mode_table">표</string>
   <string name="chart_series">계열</string>
   <string name="chart_series_name">계열 %1$d</string>
+  <string name="about_page_downloads">다운로드</string>
+  <string name="about_page_feedback">피드백</string>
+  <string name="about_page_upstream">원본 프로젝트: RikkaHub</string>
+  <string name="setting_page_upstream_community">원본 커뮤니티: RikkaHub</string>
 </resources>

@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           previous_tag=$(git tag --list '2.5.*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -n 1 || true)
           {
-            echo "## RikkaHub Custom $GITHUB_REF_NAME"
+            echo "## RikkaPlus $GITHUB_REF_NAME"
             echo
             echo '包名：`me.rerere.rikkahub.custom`'
             echo
@@ -123,7 +123,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          name: RikkaHub Custom ${{ github.ref_name }}
+          name: RikkaPlus ${{ github.ref_name }}
           body_path: release-notes.md
           files: |
             app/build/outputs/apk/release/*.apk

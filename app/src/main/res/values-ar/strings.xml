@@ -7,7 +7,7 @@
   <string name="about_page_version">الإصدار</string>
   <string name="about_page_website">الموقع الإلكتروني</string>
   <string name="add">إضافة</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">RikkaPlus</string>
   <string name="asr_button_content_description">التعرف على الكلام</string>
   <string name="asr_button_stop">إيقاف</string>
   <string name="assistant_detail_basic_desc">ضبط الاسم والصورة الرمزية والنموذج والمعلمات</string>
@@ -394,10 +394,10 @@
   <string name="deep_thinking_seconds">فكّر لمدة %1$.1f ثانية</string>
   <string name="delete">حذف</string>
   <string name="donate_page_afdian_desc">للمستخدمين في الصين 🇨🇳</string>
-  <string name="donate_page_donation_methods">طرق التبرع</string>
+  <string name="donate_page_donation_methods">RikkaHub — طرق التبرع</string>
   <string name="donate_page_kofi_desc">للمستخدمين حول العالم</string>
-  <string name="donate_page_sponsor_list">قائمة الرعاة</string>
-  <string name="donate_page_title">تبرع</string>
+  <string name="donate_page_sponsor_list">RikkaHub — قائمة الرعاة</string>
+  <string name="donate_page_title">دعم المطور الأصلي</string>
   <string name="edit">تعديل</string>
   <string name="editing">جارٍ التعديل</string>
   <string name="emoji_picker_search_placeholder">ابحث عن الرموز التعبيرية...</string>
@@ -934,10 +934,10 @@
   <string name="setting_page_default_model_desc">تعيين النماذج الافتراضية لكل ميزة</string>
   <string name="setting_page_display_setting">إعدادات العرض</string>
   <string name="setting_page_display_setting_desc">إدارة إعدادات العرض</string>
-  <string name="setting_page_documentation">التوثيق</string>
+  <string name="setting_page_documentation">وثائق المشروع الأصلي: RikkaHub</string>
   <string name="setting_page_documentation_desc">عرض إرشادات استخدام التطبيق ووثائق المساعدة</string>
-  <string name="setting_page_donate">تبرع</string>
-  <string name="setting_page_donate_desc">إذا أعجبك، ادعم عمل المؤلف</string>
+  <string name="setting_page_donate">دعم المطور الأصلي</string>
+  <string name="setting_page_donate_desc">هذه التبرعات تدعم re-ovo، المطور الأصلي لـ RikkaHub.</string>
   <string name="setting_page_dynamic_color">الألوان الديناميكية</string>
   <string name="setting_page_dynamic_color_desc">توليد ألوان سمة التطبيق ديناميكيًا من خلفية الشاشة</string>
   <string name="setting_page_extensions">الإضافات</string>
@@ -985,11 +985,11 @@
   <string name="setting_page_search_title">خدمة البحث</string>
   <string name="setting_page_share">مشاركة</string>
   <string name="setting_page_share_desc">شارك هذا التطبيق مع أصدقائك</string>
-  <string name="setting_page_share_text">RikkaHub - مساعد ذكاء اصطناعي مفتوح المصدر لأندرويد\n\nالموقع الإلكتروني: https://rikka-ai.com/</string>
-  <string name="setting_page_sponsor_alert_confirm">تبرّع</string>
-  <string name="setting_page_sponsor_alert_desc">لقد قمت بتشغيل التطبيق أكثر من 100 مرة! إذا كنت تستمتع باستخدامه، فيرجى التفكير في دعم المطوّر.</string>
+  <string name="setting_page_share_text">RikkaPlus - مساعد ذكاء اصطناعي مفتوح المصدر لأندرويد\n\nالموقع الإلكتروني: https://github.com/Hoixg/rikkaplus/releases</string>
+  <string name="setting_page_sponsor_alert_confirm">دعم المطور الأصلي</string>
+  <string name="setting_page_sponsor_alert_desc">هذه التبرعات تدعم re-ovo، المطور الأصلي لـ RikkaHub.</string>
   <string name="setting_page_sponsor_alert_dismiss">ليس الآن</string>
-  <string name="setting_page_sponsor_alert_title">دعم المطوّر</string>
+  <string name="setting_page_sponsor_alert_title">دعم المطور الأصلي</string>
   <string name="setting_page_theme_setting">السمة</string>
   <string name="setting_page_theme_setting_desc">تخصيص نظام ألوان التطبيق</string>
   <string name="setting_page_tts_service">خدمات الكلام</string>
@@ -1361,4 +1361,8 @@
   <string name="chart_mode_table">جدول</string>
   <string name="chart_series">سلسلة</string>
   <string name="chart_series_name">سلسلة %1$d</string>
+  <string name="about_page_downloads">التنزيلات</string>
+  <string name="about_page_feedback">الملاحظات</string>
+  <string name="about_page_upstream">المشروع الأصلي: RikkaHub</string>
+  <string name="setting_page_upstream_community">مجتمع المشروع الأصلي: RikkaHub</string>
 </resources>
