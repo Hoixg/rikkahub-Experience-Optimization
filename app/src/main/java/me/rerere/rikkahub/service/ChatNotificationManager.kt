@@ -62,6 +62,7 @@ class ChatNotificationManager(
                 when (event) {
                     is AppEvent.ChatGenerationUpdate -> handleGenerationUpdate(event)
                     is AppEvent.ChatGenerationEnded -> handleGenerationEnded(event)
+                    is AppEvent.ScheduledTaskEnded -> handleScheduledTaskEnded(event)
                     else -> {}
                 }
             }
@@ -85,10 +86,29 @@ class ChatNotificationManager(
     private suspend fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
         cancelLiveUpdateNotification(event.conversationId)
 
+        if (event.scheduledTask) return
         val contentPreview = event.contentPreview ?: return
         if (isForeground.value) return
         if (!settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration) return
         sendGenerationDoneNotification(event.conversationId, event.senderName, contentPreview)
+    }
+
+    private fun handleScheduledTaskEnded(event: AppEvent.ScheduledTaskEnded) {
+        val state = when (event.status) {
+            "SUCCESS" -> "已完成"
+            "WAITING_APPROVAL" -> "等待审批"
+            "CANCELLED" -> "已取消"
+            else -> "执行失败"
+        }
+        context.sendNotification(CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID, 100_000 + ((event.conversationId?.hashCode() ?: event.taskName.hashCode()) and 0xffff)) {
+            title = "${event.taskName} · $state"
+            content = event.preview.ifBlank { state }.take(150)
+            autoCancel = true
+            useDefaults = true
+            contentIntent = event.conversationId?.let { getPendingIntent(context, it) } ?: PendingIntent.getActivity(
+                context, 2004, Intent(context, RouteActivity::class.java).putExtra("openScheduledTasks", true),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
     }
 
     private fun sendGenerationDoneNotification(

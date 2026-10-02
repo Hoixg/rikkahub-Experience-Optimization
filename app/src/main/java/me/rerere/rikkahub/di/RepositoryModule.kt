@@ -19,6 +19,7 @@ import org.koin.dsl.module
 import java.io.File
 
 val repositoryModule = module {
+    single { me.rerere.rikkahub.data.repository.ScheduledTaskRepository(get(), get()) }
     single {
         ConversationRepository(get(), get(), get(), get(), get(), get())
     }

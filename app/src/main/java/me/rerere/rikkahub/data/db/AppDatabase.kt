@@ -41,10 +41,11 @@ import me.rerere.rikkahub.utils.JsonInstant
         FavoriteEntity::class,
         WorkspaceEntity::class,
         FolderEntity::class,
+        me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity::class,
         ScheduledJobEntity::class,
         ScheduledJobRunEntity::class,
     ],
-    version = 31,
+    version = 32,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -86,6 +87,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun workspaceDao(): WorkspaceDAO
 
     abstract fun folderDao(): FolderDAO
+
+    abstract fun scheduledTaskDao(): me.rerere.rikkahub.data.db.dao.ScheduledTaskDAO
 
     abstract fun scheduledJobDao(): ScheduledJobDao
 }

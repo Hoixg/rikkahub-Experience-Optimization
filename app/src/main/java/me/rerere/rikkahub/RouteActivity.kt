@@ -228,7 +228,7 @@ class RouteActivity : ComponentActivity() {
             Intent.ACTION_PROCESS_TEXT -> Screen.ShareHandler(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty(),
             )
-            else -> intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
+            else -> if (intent.getBooleanExtra("openScheduledTasks", false)) Screen.ScheduledTasks() else intent.getStringExtra("conversationId")?.let { Screen.Chat(it) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)
@@ -250,6 +250,7 @@ class RouteActivity : ComponentActivity() {
                     is AppEvent.OpenUsageAccessSettings -> this@RouteActivity.openUsageAccessSettings()
                     is AppEvent.ChatGenerationUpdate -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ChatGenerationEnded -> Unit // 由 ChatNotificationManager 消费
+                    is AppEvent.ScheduledTaskEnded -> Unit
                     is AppEvent.ChatTurnFinished -> Unit // 由定时任务管理器消费
                 }
             }
@@ -396,6 +397,15 @@ class RouteActivity : ComponentActivity() {
                                 TranslatorPage()
                             }
 
+                            entry<Screen.ScheduledTasks> { key ->
+                                me.rerere.rikkahub.ui.pages.automation.ScheduledTasksPage(key.assistantId)
+                            }
+                            entry<Screen.ScheduledTaskEdit> { key ->
+                                me.rerere.rikkahub.ui.pages.automation.ScheduledTaskEditPage(key.id, key.defaultAssistantId)
+                            }
+                            entry<Screen.SettingPermissions> {
+                                me.rerere.rikkahub.ui.pages.setting.SettingPermissionsPage()
+                            }
                             entry<Screen.Setting> {
                                 SettingPage()
                             }
@@ -636,6 +646,15 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Translator : Screen
+
+    @Serializable
+    data class ScheduledTasks(val assistantId: String? = null) : Screen
+
+    @Serializable
+    data class ScheduledTaskEdit(val id: String? = null, val defaultAssistantId: String? = null) : Screen
+
+    @Serializable
+    data object SettingPermissions : Screen
 
     @Serializable
     data object Setting : Screen

@@ -21,6 +21,7 @@ import coil3.request.placeholder
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
 import me.rerere.rikkahub.ui.components.ui.LocalExportContext
+import me.rerere.rikkahub.ui.components.ui.ResolvedLocalPathImagePreviewDialog
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
 
@@ -33,12 +34,53 @@ fun ZoomableAsyncImage(
     contentScale: ContentScale = ContentScale.Fit,
     alpha: Float = DefaultAlpha,
 ) {
+    ZoomableAsyncImageImpl(
+        model = model,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        alignment = alignment,
+        contentScale = contentScale,
+        alpha = alpha,
+        resolveLocalPath = false,
+    )
+}
+
+@Composable
+internal fun ChatBodyZoomableAsyncImage(
+    model: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    alignment: Alignment = Alignment.Center,
+    contentScale: ContentScale = ContentScale.Fit,
+    alpha: Float = DefaultAlpha,
+) {
+    ZoomableAsyncImageImpl(
+        model = model,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        alignment = alignment,
+        contentScale = contentScale,
+        alpha = alpha,
+        resolveLocalPath = true,
+    )
+}
+
+@Composable
+private fun ZoomableAsyncImageImpl(
+    model: String?,
+    contentDescription: String?,
+    modifier: Modifier,
+    alignment: Alignment,
+    contentScale: ContentScale,
+    alpha: Float,
+    resolveLocalPath: Boolean,
+) {
     var showImageViewer by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val placeholder = if(LocalDarkMode.current) R.drawable.placeholder_dark else R.drawable.placeholder
     val export = LocalExportContext.current
     val coilModel = ImageRequest.Builder(context)
-        .data(model)
+        .data(if (resolveLocalPath) resolveChatImageModel(model) else model)
         .placeholder(placeholder)
         .error(placeholder)
         .fallback(placeholder)
@@ -68,8 +110,14 @@ fun ZoomableAsyncImage(
         },
     )
     if (showImageViewer) {
-        ImagePreviewDialog(images = listOf(model ?: "")) {
-            showImageViewer = false
+        if (resolveLocalPath) {
+            ResolvedLocalPathImagePreviewDialog(images = listOf(model ?: "")) {
+                showImageViewer = false
+            }
+        } else {
+            ImagePreviewDialog(images = listOf(model ?: "")) {
+                showImageViewer = false
+            }
         }
     }
 }

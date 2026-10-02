@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- EN/zh/zh-TW are provided; other locales use the English fallback for this new feature. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+  <string name="automation_page_title">Automation</string>
+  <string name="automation_page_add">New task</string>
+  <string name="automation_page_empty_title">No automation tasks</string>
+  <string name="automation_page_empty_desc">Let the assistant run a prompt on a schedule and read the result in a new conversation.</string>
+  <string name="automation_page_last_run">Last run:</string>
+  <string name="automation_page_next_run">Next run:</string>
+  <string name="automation_page_status_never">Never</string>
+  <string name="automation_page_status_running">Running</string>
+  <string name="automation_page_status_success">Succeeded</string>
+  <string name="automation_page_status_failed">Failed</string>
+  <string name="automation_page_status_skipped">Skipped</string>
+  <string name="automation_page_delete_title">Delete task</string>
+  <string name="automation_page_delete_message">Delete "%1$s"? This cannot be undone.</string>
+  <string name="automation_page_type_once_at">Once at %1$s</string>
+  <string name="automation_page_type_daily_at">Daily at %1$s</string>
+  <string name="automation_page_type_interval">Every %1$d min</string>
+  <string name="automation_edit_title_create">New task</string>
+  <string name="automation_edit_title_edit">Edit task</string>
+  <string name="automation_edit_name">Task name</string>
+  <string name="automation_edit_name_hint">e.g. Morning briefing</string>
+  <string name="automation_edit_prompt">Prompt</string>
+  <string name="automation_edit_prompt_hint">What should the assistant do at that time?</string>
+  <string name="automation_edit_assistant">Run as assistant</string>
+  <string name="automation_edit_schedule">Schedule</string>
+  <string name="automation_edit_type_once">Once</string>
+  <string name="automation_edit_type_daily">Daily</string>
+  <string name="automation_edit_type_interval">Interval</string>
+  <string name="automation_edit_daily_at">Trigger time</string>
+  <string name="automation_edit_interval">Repeat every</string>
+  <string name="automation_edit_interval_custom">Custom interval</string>
+  <string name="automation_edit_minutes">min</string>
+  <string name="automation_edit_interval_30m">30 min</string>
+  <string name="automation_edit_interval_1h">1 hour</string>
+  <string name="automation_edit_interval_3h">3 hours</string>
+  <string name="automation_edit_interval_6h">6 hours</string>
+  <string name="automation_edit_interval_12h">12 hours</string>
+  <string name="automation_edit_interval_24h">24 hours</string>
+  <string name="automation_edit_save">Save</string>
+</resources>

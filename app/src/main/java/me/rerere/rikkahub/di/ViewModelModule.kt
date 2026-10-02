@@ -26,6 +26,9 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 val viewModelModule = module {
+    viewModel<me.rerere.rikkahub.ui.pages.automation.ScheduledTasksVM> { params ->
+        me.rerere.rikkahub.ui.pages.automation.ScheduledTasksVM(get(), params.getOrNull())
+    }
     viewModel<ChatVM> { params ->
         ChatVM(
             id = params.get(),

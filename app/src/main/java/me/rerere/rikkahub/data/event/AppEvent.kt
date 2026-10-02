@@ -22,7 +22,10 @@ sealed class AppEvent {
         val conversationId: Uuid,
         val senderName: String,
         val contentPreview: String?,
+        val scheduledTask: Boolean = false,
     ) : AppEvent()
+
+    data class ScheduledTaskEnded(val conversationId: Uuid?, val taskName: String, val status: String, val preview: String) : AppEvent()
 
     data class ChatTurnFinished(val conversationId: Uuid) : AppEvent()
 }

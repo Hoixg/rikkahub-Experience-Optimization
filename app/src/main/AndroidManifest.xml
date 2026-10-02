@@ -3,6 +3,9 @@
   xmlns:tools="http://schemas.android.com/tools">
 
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <!-- Termux's RunCommandService checks this custom permission before accepting agent calls. -->
   <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
   <uses-permission android:name="android.permission.CAMERA" />
@@ -129,6 +132,15 @@
       android:name="com.yalantis.ucrop.UCropActivity"
       android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
+    <receiver android:name=".worker.ScheduledTaskClockReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.TIME_SET" />
+        <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+      </intent-filter>
+    </receiver>
+    <service android:name=".service.KeepAliveService" android:exported="false" android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled persistent AI task operation with a visible stop control" />
+    </service>
     <service
       android:name=".service.ChatGenerationForegroundService"
       android:exported="false"

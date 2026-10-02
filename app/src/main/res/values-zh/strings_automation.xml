@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="automation_page_title">定时任务</string>
+  <string name="automation_page_add">新建任务</string>
+  <string name="automation_page_empty_title">暂无定时任务</string>
+  <string name="automation_page_empty_desc">让助手按计划自动执行提示词，结果保存在新会话里。</string>
+  <string name="automation_page_last_run">最近运行：</string>
+  <string name="automation_page_next_run">下次运行：</string>
+  <string name="automation_page_status_never">从未运行</string>
+  <string name="automation_page_status_running">运行中</string>
+  <string name="automation_page_status_success">已成功</string>
+  <string name="automation_page_status_failed">已失败</string>
+  <string name="automation_page_status_skipped">已跳过</string>
+  <string name="automation_page_delete_title">删除任务</string>
+  <string name="automation_page_delete_message">确定要删除“%1$s”吗？此操作无法撤销。</string>
+  <string name="automation_page_type_once_at">单次 · %1$s</string>
+  <string name="automation_page_type_daily_at">每天 %1$s</string>
+  <string name="automation_page_type_interval">每 %1$d 分钟</string>
+  <string name="automation_edit_title_create">新建任务</string>
+  <string name="automation_edit_title_edit">编辑任务</string>
+  <string name="automation_edit_name">任务名称</string>
+  <string name="automation_edit_name_hint">例如：早间简报</string>
+  <string name="automation_edit_prompt">提示词</string>
+  <string name="automation_edit_prompt_hint">到点时希望助手做什么？</string>
+  <string name="automation_edit_assistant">执行助手</string>
+  <string name="automation_edit_schedule">调度</string>
+  <string name="automation_edit_type_once">单次</string>
+  <string name="automation_edit_type_daily">每天</string>
+  <string name="automation_edit_type_interval">周期</string>
+  <string name="automation_edit_daily_at">触发时间</string>
+  <string name="automation_edit_interval">重复间隔</string>
+  <string name="automation_edit_interval_custom">自定义间隔</string>
+  <string name="automation_edit_minutes">分钟</string>
+  <string name="automation_edit_interval_30m">30 分钟</string>
+  <string name="automation_edit_interval_1h">1 小时</string>
+  <string name="automation_edit_interval_3h">3 小时</string>
+  <string name="automation_edit_interval_6h">6 小时</string>
+  <string name="automation_edit_interval_12h">12 小时</string>
+  <string name="automation_edit_interval_24h">24 小时</string>
+  <string name="automation_edit_save">保存</string>
+</resources>

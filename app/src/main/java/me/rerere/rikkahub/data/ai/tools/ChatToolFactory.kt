@@ -30,6 +30,7 @@ class InvalidMcpServerNamesException(val names: List<String>) :
 
 /** Creates the complete tool set for one generation run, including approval resumption. */
 class ChatToolFactory(
+    private val scheduledTaskRepository: me.rerere.rikkahub.data.repository.ScheduledTaskRepository,
     private val json: Json,
     private val memoryRepository: MemoryRepository,
     private val conversationRepository: ConversationRepository,
@@ -46,6 +47,7 @@ class ChatToolFactory(
         workspaceCwd: String? = null,
         getMessages: () -> List<UIMessage> = { emptyList() },
     ): List<Tool> = buildList {
+        addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id))
         if (assistant.enableMemory) {
             val memoryAssistantId = if (assistant.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID

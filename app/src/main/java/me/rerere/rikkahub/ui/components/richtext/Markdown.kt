@@ -669,7 +669,7 @@ internal fun ResolvedMarkdownImage(
             runCatching { resolver(source) }.getOrNull()
         }
     }
-    ZoomableAsyncImage(
+    ChatBodyZoomableAsyncImage(
         model = model,
         contentDescription = contentDescription,
         modifier = modifier,

@@ -90,6 +90,11 @@ class RikkaHubApp : Application() {
         // Extract builtin skills from assets after install/update
         extractBuiltinSkills()
 
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching { get<me.rerere.rikkahub.data.repository.ScheduledTaskRepository>().initialize() }
+                .onFailure { Log.e(TAG, "Scheduled task reconciliation failed", it) }
+        }
+
         // Increment launch count
         incrementLaunchCount()
 
@@ -165,6 +170,9 @@ class RikkaHubApp : Application() {
 
     private fun createNotificationChannel() {
         val notificationManager = NotificationManagerCompat.from(this)
+        notificationManager.createNotificationChannel(NotificationChannelCompat.Builder(
+            me.rerere.rikkahub.service.KeepAliveService.CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName("后台保活").setShowBadge(false).setVibrationEnabled(false).build())
         val chatCompletedChannel = NotificationChannelCompat
             .Builder(
                 CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,

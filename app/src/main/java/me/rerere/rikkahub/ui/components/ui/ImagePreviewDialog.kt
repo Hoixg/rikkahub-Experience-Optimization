@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.ui.components.richtext.resolveChatImageModel
 import me.rerere.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
 
@@ -33,6 +34,31 @@ import org.koin.compose.koinInject
 fun ImagePreviewDialog(
     images: List<String>,
     onDismissRequest: () -> Unit,
+) {
+    ImagePreviewDialogImpl(
+        images = images,
+        onDismissRequest = onDismissRequest,
+        resolveLocalPaths = false,
+    )
+}
+
+@Composable
+internal fun ResolvedLocalPathImagePreviewDialog(
+    images: List<String>,
+    onDismissRequest: () -> Unit,
+) {
+    ImagePreviewDialogImpl(
+        images = images,
+        onDismissRequest = onDismissRequest,
+        resolveLocalPaths = true,
+    )
+}
+
+@Composable
+private fun ImagePreviewDialogImpl(
+    images: List<String>,
+    onDismissRequest: () -> Unit,
+    resolveLocalPaths: Boolean,
 ) {
     val context = LocalContext.current
     val filesManager: FilesManager = koinInject()
@@ -51,7 +77,12 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val painter = rememberAsyncImagePainter(images[index])
+                    val imageModel = if (resolveLocalPaths) {
+                        resolveChatImageModel(images[index])
+                    } else {
+                        images[index]
+                    }
+                    val painter = rememberAsyncImagePainter(imageModel)
                     return@ImagePager Pair(painter, painter.intrinsicSize)
                 },
             )

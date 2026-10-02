@@ -81,7 +81,7 @@ import me.rerere.rikkahub.data.model.replaceRegexes
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
-import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
+import me.rerere.rikkahub.ui.components.richtext.ChatBodyZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
 import me.rerere.rikkahub.ui.components.webview.WebViewContentCache
 import me.rerere.rikkahub.ui.components.ui.ChainOfThought
@@ -547,7 +547,7 @@ private fun MessagePartsBlock(
                                     .shimmer(isLoading = true)
                             )
                         } else {
-                            ZoomableAsyncImage(
+                            ChatBodyZoomableAsyncImage(
                                 model = part.url,
                                 contentDescription = null,
                                 modifier = Modifier

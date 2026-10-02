@@ -43,6 +43,9 @@ import me.rerere.ai.ui.canResumeToolExecution
 import me.rerere.ai.ui.finishPendingTools
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.common.android.Logging
+import me.rerere.rikkahub.data.repository.ScheduledTaskRepository
+import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
+import me.rerere.rikkahub.data.db.entity.ScheduledTaskRunStatus
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.GenerationChunk
@@ -183,6 +186,7 @@ private val outputTransformers by lazy {
 }
 
 class ChatService(
+    private val scheduledTaskRepository: ScheduledTaskRepository,
     private val context: Application,
     private val appScope: AppScope,
     private val appEventBus: AppEventBus,
@@ -199,6 +203,51 @@ class ChatService(
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
+    private val scheduledCompletions = java.util.concurrent.ConcurrentHashMap<Uuid, CompletableDeferred<String>>()
+    private val scheduledFailures = java.util.concurrent.ConcurrentHashMap<Uuid, Throwable>()
+    private val scheduledWorkerConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+
+    suspend fun startScheduledConversation(task: ScheduledTaskEntity, conversationId: Uuid): Deferred<String> {
+        val settings = settingsStore.settingsFlowRaw.first()
+        val assistant = settings.getAssistantById(Uuid.parse(task.assistantId)) ?: error("任务所属助手已删除")
+        val completion = CompletableDeferred<String>()
+        scheduledCompletions[conversationId] = completion
+        scheduledWorkerConversations.add(conversationId)
+        val conversation = Conversation.ofId(conversationId, assistant.id, newConversation = true)
+            .copy(title = task.name).updateCurrentMessages(assistant.presetMessages)
+        val session = sessionManager.getOrCreate(conversationId)
+        session.updateConversation(conversation)
+        conversationRepo.insertConversation(conversation)
+        scheduledTaskRepository.attachConversation(task)
+        sendMessage(conversationId, listOf(UIMessagePart.Text(task.prompt)))
+        return completion
+    }
+
+    fun releaseScheduledWorker(conversationId: Uuid) {
+        scheduledWorkerConversations.remove(conversationId)
+        scheduledCompletions.remove(conversationId)
+    }
+
+    private suspend fun finishScheduledSession(session: ConversationSession, failure: Throwable?, conversation: Conversation) {
+        val task = scheduledTaskRepository.getActiveByConversation(session.id.toString()) ?: return
+        val status = when {
+            failure is CancellationException -> ScheduledTaskRunStatus.CANCELLED
+            failure != null -> ScheduledTaskRunStatus.FAILED
+            conversation.currentMessages.any { it.parts.any { part -> part is UIMessagePart.Tool && part.isPending } } ->
+                ScheduledTaskRunStatus.WAITING_APPROVAL
+            else -> ScheduledTaskRunStatus.SUCCESS
+        }
+        val error = failure?.message.orEmpty()
+        if (scheduledTaskRepository.finish(task, status, error)) {
+            if (status.name != task.lastRunStatus || status.name != "WAITING_APPROVAL") {
+                appEventBus.emit(AppEvent.ScheduledTaskEnded(session.id, task.name, status.name,
+                    error.ifBlank { conversation.currentMessages.lastOrNull()?.toText().orEmpty().take(150) }))
+            }
+        }
+        if (status == ScheduledTaskRunStatus.WAITING_APPROVAL) scheduledWorkerConversations.remove(session.id)
+        scheduledCompletions[session.id]?.complete(status.name)
+    }
+
     // workspace 系统提示注入 (依赖 workspaceRepository, 故在类内构造)
     private val workspaceReminderTransformer = WorkspaceReminderTransformer(workspaceRepository)
 
@@ -241,6 +290,9 @@ class ChatService(
     fun cleanup() = runCatching { sessionManager.cleanup() }
 
     private fun onSessionGenerationFinished(session: ConversationSession, cause: Throwable?) {
+        val completedConversation = session.state.value
+        val scheduledFailure = scheduledFailures.remove(session.id) ?: cause
+        scheduledWorkerConversations.remove(session.id)
         if (cause != null) session.messageQueue.pause()
         if (session.state.value.currentMessages.any { message ->
                 message.parts.any { it is UIMessagePart.Tool && it.isPending }
@@ -248,7 +300,14 @@ class ChatService(
             session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
         }
         appScope.launch { dispatchNextQueuedMessage(session.id) }
-        appScope.launch { appEventBus.emit(AppEvent.ChatTurnFinished(session.id)) }
+        appScope.launch {
+            try { finishScheduledSession(session, scheduledFailure, completedConversation) }
+            catch (e: Exception) {
+                scheduledCompletions[session.id]?.completeExceptionally(e)
+                Log.e(TAG, "Unable to persist scheduled result", e)
+            }
+            appEventBus.emit(AppEvent.ChatTurnFinished(session.id))
+        }
     }
 
     // 保留 UI/Web 的入口，生命周期和状态查询统一交给 SessionManager。
@@ -276,7 +335,7 @@ class ChatService(
         keepAliveInBackground: Boolean = true,
         block: suspend () -> Unit,
     ): Job {
-        if (!keepAliveInBackground) {
+        if (!keepAliveInBackground || conversationId in scheduledWorkerConversations) {
             return appScope.launch(start = CoroutineStart.LAZY) { block() }
         }
 
@@ -470,7 +529,7 @@ class ChatService(
                 val currentConversation = session.state.value
                 val settings = settingsStore.settingsFlow.first()
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
-                    ?: settings.getCurrentAssistant()
+                    ?: if (scheduledTaskRepository.getActiveByConversation(conversationId.toString()) != null) error("任务所属助手已删除") else settings.getCurrentAssistant()
                 val processedContent = preprocessUserInputParts(content, assistant)
 
                 // 对齐 YuiHub：普通发送前压缩旧上下文，新输入始终保留为近期消息。
@@ -516,6 +575,7 @@ class ChatService(
                 // The ordinary autoplay collector must not read a late voice reply again.
                 if (queued.reply == null) _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
+                if (conversationId in scheduledWorkerConversations) scheduledFailures[conversationId] = e
                 queued.reply?.completeExceptionally(e)
                 e.printStackTrace()
                 if (e is CancellationException) {
@@ -681,6 +741,7 @@ class ChatService(
 
                     // Only continue generation when all pending tools are handled
                     if (!hasPendingTools) {
+                        scheduledTaskRepository.resumeConversation(conversationId.toString())
                         handleMessageComplete(conversationId)
                     }
 
@@ -689,6 +750,7 @@ class ChatService(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 session.messageQueue.pause()
+                if (scheduledTaskRepository.getActiveByConversation(conversationId.toString()) != null) scheduledFailures[conversationId] = e
                 addError(e, conversationId, title = context.getString(R.string.error_title_tool_approval))
             }
         }
@@ -702,10 +764,11 @@ class ChatService(
         conversationId: Uuid,
         messageRange: ClosedRange<Int>? = null
     ) {
+        val scheduledTask = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
         val initialConversation = getConversationFlow(conversationId).value
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(initialConversation.assistantId)
-            ?: settings.getCurrentAssistant()
+            ?: if (scheduledTask != null) error("任务所属助手已删除") else settings.getCurrentAssistant()
         val model = settings.findModelById(
             initialConversation.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
         )
@@ -752,6 +815,7 @@ class ChatService(
                     getMessages = { getConversationFlow(conversationId).value.currentMessages },
                 )
             } catch (error: InvalidMcpServerNamesException) {
+                if (scheduledTask != null) scheduledFailures[conversationId] = error
                 sessionManager.get(conversationId)?.messageQueue?.pause()
                 addError(
                     error = IllegalStateException(
@@ -806,6 +870,7 @@ class ChatService(
                     AppEvent.ChatGenerationEnded(
                         conversationId = conversationId,
                         senderName = senderName,
+                        scheduledTask = scheduledTask != null,
                         contentPreview = updatedConversation.currentMessages.lastOrNull()
                             ?.toText()?.take(50)?.trim() ?: "",
                     )
@@ -829,7 +894,8 @@ class ChatService(
             }
         }.onFailure {
             // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
-            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
+            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, scheduledTask = scheduledTask != null))
+            if (scheduledTask != null) scheduledFailures[conversationId] = it
             if (it is CancellationException) throw it
             sessionManager.get(conversationId)?.messageQueue?.pause()
 

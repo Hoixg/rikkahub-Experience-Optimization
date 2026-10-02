@@ -129,6 +129,12 @@ fun AssistantDetailPage(id: String) {
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.ScheduledTasks(id)) },
+                        headlineContent = { Text("定时任务") },
+                        supportingContent = { Text("管理这个助手的自动任务") },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.AssistantLocalTool(id)) },
                         leadingContent = { Icon(HugeIcons.BookOpen01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_local_tools_desc)) },

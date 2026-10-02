@@ -242,6 +242,15 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
+            item("automation") {
+                CardGroup(modifier = Modifier.padding(horizontal = 8.dp)) {
+                    item(onClick = { navController.navigate(Screen.ScheduledTasks()) },
+                        headlineContent = { Text("定时任务") }, supportingContent = { Text("按计划让助手执行提示词") })
+                    item(onClick = { navController.navigate(Screen.SettingPermissions) },
+                        headlineContent = { Text("权限管理") }, supportingContent = { Text("通知、电池优化与后台保活") })
+                }
+            }
+
             item("dataSettings") {
                 val storageState by produceState(-1 to 0L) {
                     value = filesManager.countChatFiles()
