@@ -11,6 +11,7 @@ import me.rerere.hugeicons.stroke.Share01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.PencilEdit01
+import me.rerere.hugeicons.stroke.Settings03
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -150,7 +151,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
     val navController = LocalNavController.current
     val provider = settings.providers.find { it.id == id } ?: return
     var draftProvider by remember(provider) { mutableStateOf(provider) }
-    val pager = rememberPagerState { 2 }
+    val pager = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
@@ -175,9 +176,9 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
         navController.popBackStack()
     }
 
-    // Keep edits alive while switching between the configuration and model tabs.
+    // Keep edits alive when leaving the configuration tab.
     LaunchedEffect(pager.currentPage) {
-        if (pager.currentPage == 1 && draftProvider != provider) {
+        if (pager.currentPage != 0 && draftProvider != provider) {
             onEdit(draftProvider)
         }
     }
@@ -236,6 +237,16 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         }
                     }
                 )
+                NavigationBarItem(
+                    selected = pager.currentPage == 2,
+                    label = { Text(stringResource(id = R.string.setting_provider_page_advanced_settings)) },
+                    icon = { Icon(HugeIcons.Settings03, null) },
+                    onClick = {
+                        scope.launch {
+                            pager.animateScrollToPage(2)
+                        }
+                    }
+                )
             }
         }
     ) {
@@ -278,6 +289,16 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
 
                 1 -> {
                     SettingProviderModelPage(
+                        provider = draftProvider,
+                        onEdit = {
+                            draftProvider = it
+                            onEdit(it)
+                        }
+                    )
+                }
+
+                2 -> {
+                    SettingProviderAdvancedPage(
                         provider = draftProvider,
                         onEdit = {
                             draftProvider = it
@@ -428,6 +449,28 @@ private fun SettingProviderModelPage(
         providerSetting = provider,
         onUpdateProvider = onEdit
     )
+}
+
+@Composable
+private fun SettingProviderAdvancedPage(
+    provider: ProviderSetting,
+    onEdit: (ProviderSetting) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        CustomHeaders(
+            headers = provider.customHeaders,
+            onUpdate = { headers ->
+                onEdit(provider.copyProvider(customHeaders = headers))
+            }
+        )
+    }
 }
 
 @Composable

@@ -143,19 +143,19 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
     return when (type) {
         ProviderSetting.OpenAI::class -> ProviderSetting.OpenAI(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            balanceOption = this.balanceOption, builtIn = this.builtIn,
+            balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            balanceOption = this.balanceOption, builtIn = this.builtIn,
+            balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
-            balanceOption = this.balanceOption, builtIn = this.builtIn,
+            balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
             apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
         )

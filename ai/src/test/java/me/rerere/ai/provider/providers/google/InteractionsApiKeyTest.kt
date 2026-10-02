@@ -1,6 +1,7 @@
 package me.rerere.ai.provider.providers.google
 
 import kotlinx.coroutines.runBlocking
+import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
@@ -28,7 +29,7 @@ class InteractionsApiKeyTest {
 
     @Test
     fun `interactions uses selected saved key instead of legacy key`() {
-        assertEquals("selected-key", requestKey(provider))
+        assertEquals("selected-key", request(provider).header("x-goog-api-key"))
         assertEquals(1, provider.selectedApiKeyIndex)
     }
 
@@ -36,12 +37,34 @@ class InteractionsApiKeyTest {
     fun `interactions honors model request key without changing provider selection`() {
         val requestProvider = provider.withRequestApiKey("model-key") as ProviderSetting.Google
 
-        assertEquals("model-key", requestKey(requestProvider))
+        assertEquals("model-key", request(requestProvider).header("x-goog-api-key"))
         assertEquals("selected-key", provider.selectedApiKey())
         assertEquals(1, provider.selectedApiKeyIndex)
     }
 
-    private fun requestKey(providerSetting: ProviderSetting.Google): String? = runBlocking {
+    @Test
+    fun `interactions merges provider headers and request overrides while keeping selected key`() {
+        val requestProvider = provider.copy(
+            customHeaders = listOf(
+                CustomHeader("X-Provider", "provider-value"),
+                CustomHeader("X-Shared", "provider-default"),
+            ),
+        )
+
+        val captured = request(
+            requestProvider,
+            headers = listOf(CustomHeader("x-shared", "request-value")),
+        )
+
+        assertEquals("provider-value", captured.header("X-Provider"))
+        assertEquals(listOf("request-value"), captured.headers.values("X-Shared"))
+        assertEquals("selected-key", captured.header("x-goog-api-key"))
+    }
+
+    private fun request(
+        providerSetting: ProviderSetting.Google,
+        headers: List<CustomHeader> = emptyList(),
+    ): Request = runBlocking {
         val captured = AtomicReference<Request>()
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             captured.set(chain.request())
@@ -58,10 +81,13 @@ class InteractionsApiKeyTest {
             GoogleProvider(client).generateText(
                 providerSetting = providerSetting,
                 messages = listOf(UIMessage.user("hello")),
-                params = TextGenerationParams(model = Model(modelId = "gemini-3.8-flash")),
+                params = TextGenerationParams(
+                    model = Model(modelId = "gemini-3.8-flash"),
+                    customHeaders = headers,
+                ),
             )
             assertEquals("/v1beta/interactions", captured.get().url.encodedPath)
-            captured.get().header("x-goog-api-key")
+            captured.get()
         } finally {
             client.connectionPool.evictAll()
             client.dispatcher.executorService.shutdown()

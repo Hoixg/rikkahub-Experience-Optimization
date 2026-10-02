@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.setting.components
 
 import me.rerere.ai.provider.BalanceOption
 import me.rerere.ai.provider.ApiKeyInfo
+import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -30,6 +31,7 @@ class ProviderConfigureConvertToTest {
             name = "My Provider",
             models = listOf(model),
             balanceOption = balanceOption,
+            customHeaders = listOf(CustomHeader("User-Agent", "test-agent")),
             apiKey = "sk-test",
             apiKeys = listOf("sk-test", "sk-backup"),
             selectedApiKeyIndex = 1,
@@ -52,6 +54,7 @@ class ProviderConfigureConvertToTest {
         assertEquals("sk-backup", google.apiKey)
         assertEquals(original.apiKeyInfos, google.apiKeyInfos)
         assertEquals(1, google.selectedApiKeyIndex)
+        assertEquals(original.customHeaders, google.customHeaders)
         assertEquals("https://generativelanguage.googleapis.com/v1beta", google.baseUrl)
     }
 
