@@ -183,3 +183,10 @@ internal suspend fun afterPreviousGeneration(previous: Job?, block: suspend () -
         throw e
     }
 }
+
+/** The session lock makes checking user input and reserving scheduled ownership one operation. */
+internal fun ConversationSession.reserveForScheduledTask(reservations: MutableSet<Uuid>, finishing: Set<Uuid>): Boolean = synchronized(this) {
+    if (getJob() != null || submittingMessage != null || messageQueue.state.value.messages.isNotEmpty() || id in finishing ||
+        state.value.currentMessages.any { message -> message.parts.any { it is me.rerere.ai.ui.UIMessagePart.Tool && it.isPending } }) false
+    else reservations.add(id)
+}

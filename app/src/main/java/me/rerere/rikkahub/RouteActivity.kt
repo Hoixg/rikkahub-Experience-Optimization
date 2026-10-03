@@ -57,11 +57,15 @@ import coil3.svg.SvgDecoder
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.repository.ScheduledTaskRepository
+import me.rerere.rikkahub.service.ScheduledTaskExecutionService
 import me.rerere.rikkahub.ui.activity.SafeModeActivity
 import me.rerere.rikkahub.ui.components.ui.TTSController
 import me.rerere.rikkahub.ui.context.LocalASRState
@@ -143,6 +147,8 @@ private const val ACTION_IMAGE_GEN = "me.rerere.rikkahub.action.IMAGE_GEN"
 class RouteActivity : ComponentActivity() {
     private val okHttpClient by inject<OkHttpClient>()
     private val settingsStore by inject<SettingsStore>()
+    private val scheduledTasks by inject<ScheduledTaskRepository>()
+    private val appScope by inject<AppScope>()
     private var navStack: MutableList<NavKey>? = null
     private val pendingIntents = ArrayDeque<Intent>()
 
@@ -170,6 +176,11 @@ class RouteActivity : ComponentActivity() {
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
             return
+        }
+        // A visible launch can discard missed slots. An alarm cold start must retain its delivered slot until claimed.
+        if (!ScheduledTaskExecutionService.processingAlarm) appScope.launch(Dispatchers.IO) {
+            runCatching { scheduledTasks.reconcile(recalculate = true) }
+                .onFailure { android.util.Log.e(TAG, "Unable to reconcile scheduled tasks", it) }
         }
         if (savedInstanceState == null) {
             handleIntent(intent)
@@ -248,7 +259,6 @@ class RouteActivity : ComponentActivity() {
                 when (event) {
                     is AppEvent.Speak -> tts.speak(event.text)
                     is AppEvent.OpenUsageAccessSettings -> this@RouteActivity.openUsageAccessSettings()
-                    is AppEvent.ChatGenerationUpdate -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ChatGenerationEnded -> Unit // 由 ChatNotificationManager 消费
                     is AppEvent.ScheduledTaskEnded -> Unit
                     is AppEvent.ChatTurnFinished -> Unit // 由定时任务管理器消费

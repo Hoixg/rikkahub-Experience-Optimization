@@ -32,6 +32,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,9 +84,11 @@ fun ScheduledTasksPage(
     assistantId: String? = null,
     vm: ScheduledTasksVM = koinViewModel(parameters = { parametersOf(assistantId) }),
 ) {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val navController = LocalNavController.current
     val tasks by vm.tasks.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
+    var historyTask by remember { mutableStateOf<ScheduledTaskEntity?>(null) }
     var pendingDelete by remember { mutableStateOf<ScheduledTaskEntity?>(null) }
 
     // 助手视图下，标题用助手名，新建任务时把助手作为默认值带进编辑页
@@ -118,6 +125,7 @@ fun ScheduledTasksPage(
                     }
                 },
                 navigationIcon = { BackButton() },
+                actions = { TextButton(onClick = { navController.navigate(Screen.SettingPermissions) }) { Text("后台与通知") } },
                 colors = CustomColors.topBarColors,
             )
         },
@@ -185,7 +193,6 @@ fun ScheduledTasksPage(
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                item { Text("系统省电可能使任务延迟；可在权限管理中开启后台保活。", modifier = Modifier.padding(8.dp)) }
                 error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
                 items(tasks, key = { it.id }) { task ->
                     ScheduledTaskCard(
@@ -194,6 +201,9 @@ fun ScheduledTasksPage(
                         onToggle = { enabled -> vm.setEnabled(task, enabled) },
                         onEdit = { navController.navigate(Screen.ScheduledTaskEdit(task.id)) },
                         onDelete = { pendingDelete = task },
+                        onRunNow = { vm.runNow(task) },
+                        onHistory = { historyTask = task },
+                        onCancel = { vm.cancelRun(task) },
                         onOpenConversation = { navController.navigate(Screen.Chat(task.lastConversationId)) },
                         modifier = Modifier.animateItem(),
                     )
@@ -202,6 +212,25 @@ fun ScheduledTasksPage(
         }
     }
 
+    historyTask?.let { selected ->
+        val history by remember(selected.id) { vm.historyFlow(selected.id) }.collectAsStateWithLifecycle(emptyList())
+        AlertDialog(onDismissRequest = { historyTask = null }, title = { Text("${selected.name} · 运行历史") }, text = {
+            LazyColumn(Modifier.heightIn(max = 450.dp)) {
+                if (history.isEmpty()) item { Text("暂无运行记录") }
+                items(history, key = { it.id }) { run ->
+                    Column(Modifier.padding(vertical = 8.dp)) {
+                        val date = java.text.SimpleDateFormat("MM-dd HH:mm", locale).format(java.util.Date(run.dueAt))
+                        Text("$date · ${if (run.source == "MANUAL") "立即执行" else "定时"} · ${runStatusText(run.status)}")
+                        if (run.error.isNotBlank()) Text(run.error, color = MaterialTheme.colorScheme.error)
+                        if (run.preview.isNotBlank()) Text(run.preview, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        run.conversationId?.let { id -> TextButton(onClick = { historyTask = null; navController.navigate(Screen.Chat(id)) }) {
+                            Text(if (run.status == "WAITING_APPROVAL") "处理审批" else "查看会话")
+                        } }
+                    }
+                }
+            }
+        }, confirmButton = { TextButton(onClick = { historyTask = null }) { Text("关闭") } })
+    }
     RikkaConfirmDialog(
         show = pendingDelete != null,
         title = stringResource(R.string.automation_page_delete_title),
@@ -229,9 +258,13 @@ private fun ScheduledTaskCard(
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onRunNow: () -> Unit,
+    onHistory: () -> Unit,
+    onCancel: () -> Unit,
     onOpenConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var menu by remember { mutableStateOf(false) }
     val scheduleType = runCatching { ScheduleType.valueOf(task.scheduleType) }
         .getOrDefault(ScheduleType.DAILY)
     val accent = scheduleAccent(scheduleType)
@@ -280,7 +313,7 @@ private fun ScheduledTaskCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = scheduleDescription(task, scheduleType),
+                        text = taskModeText(task.mode) + " · " + scheduleDescription(task, scheduleType),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -354,13 +387,15 @@ private fun ScheduledTaskCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
-                    Icon(
-                        imageVector = HugeIcons.Delete01,
-                        contentDescription = stringResource(R.string.delete),
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
+                Box {
+                    TextButton(onClick = { menu = true }) { Text("操作") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("编辑") }, onClick = { menu = false; onEdit() })
+                        DropdownMenuItem(text = { Text("立即执行") }, onClick = { menu = false; onRunNow() })
+                        DropdownMenuItem(text = { Text("运行历史") }, onClick = { menu = false; onHistory() })
+                        DropdownMenuItem(text = { Text("取消当前执行") }, enabled = task.activeRunId != null, onClick = { menu = false; onCancel() })
+                        DropdownMenuItem(text = { Text("删除") }, enabled = task.activeRunId == null, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
             if (task.lastError.isNotBlank()) {
@@ -382,6 +417,7 @@ private fun scheduleAccent(type: ScheduleType): Color {
         ScheduleType.ONCE -> colors.orange6
         ScheduleType.DAILY -> colors.blue6
         ScheduleType.INTERVAL -> colors.green6
+        ScheduleType.WEEKLY -> colors.blue6
     }
 }
 
@@ -389,6 +425,7 @@ private fun scheduleIcon(type: ScheduleType) = when (type) {
     ScheduleType.ONCE -> HugeIcons.Calendar03
     ScheduleType.DAILY -> HugeIcons.Clock01
     ScheduleType.INTERVAL -> HugeIcons.Repeat
+    ScheduleType.WEEKLY -> HugeIcons.Calendar03
 }
 
 @Composable
@@ -406,18 +443,27 @@ private fun scheduleDescription(task: ScheduledTaskEntity, type: ScheduleType): 
             ScheduledTasksVM.minutesToHour(task.timeOfDayMinutes),
             ScheduledTasksVM.minutesToMinute(task.timeOfDayMinutes),
         ),
-    )
+    ) + listOfNotNull(task.startDate?.let { "从$it" }, task.endDate?.let { "至$it" }).joinToString(" ", prefix = " ").trimEnd()
 
     ScheduleType.INTERVAL -> stringResource(
         R.string.automation_page_type_interval,
         task.intervalMinutes.coerceAtLeast(15),
     )
+    ScheduleType.WEEKLY -> {
+        val days = listOf("一", "二", "三", "四", "五", "六", "日")
+            .filterIndexed { index, _ -> task.weekdaysMask and (1 shl index) != 0 }.joinToString("")
+        "每周$days %02d:%02d".format(
+            ScheduledTasksVM.minutesToHour(task.timeOfDayMinutes),
+            ScheduledTasksVM.minutesToMinute(task.timeOfDayMinutes),
+        ) + listOfNotNull(task.startDate?.let { "从$it" }, task.endDate?.let { "至$it" }).joinToString(" ", prefix = " ").trimEnd()
+    }
 }
 
 }
 
 @Composable
 private fun runStatusText(status: String): String = when (status) {
+    ScheduledTaskRunStatus.WAITING_IDLE.name -> "等待空闲"
     ScheduledTaskRunStatus.RUNNING.name -> stringResource(R.string.automation_page_status_running)
     ScheduledTaskRunStatus.WAITING_APPROVAL.name -> "等待审批"
     ScheduledTaskRunStatus.CANCELLED.name -> "已取消"

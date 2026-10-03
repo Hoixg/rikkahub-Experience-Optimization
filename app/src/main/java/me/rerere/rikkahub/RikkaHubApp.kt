@@ -42,7 +42,7 @@ import org.koin.core.context.startKoin
 private const val TAG = "RikkaHubApp"
 
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
-const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
+const val CHAT_ONGOING_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 
 class RikkaHubApp : Application() {
     override fun onCreate() {
@@ -94,6 +94,8 @@ class RikkaHubApp : Application() {
             runCatching { get<me.rerere.rikkahub.data.repository.ScheduledTaskRepository>().initialize() }
                 .onFailure { Log.e(TAG, "Scheduled task reconciliation failed", it) }
         }
+
+        me.rerere.rikkahub.service.BackgroundRuntime.initialize(get(), get())
 
         // Increment launch count
         incrementLaunchCount()
@@ -170,9 +172,7 @@ class RikkaHubApp : Application() {
 
     private fun createNotificationChannel() {
         val notificationManager = NotificationManagerCompat.from(this)
-        notificationManager.createNotificationChannel(NotificationChannelCompat.Builder(
-            me.rerere.rikkahub.service.KeepAliveService.CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
-            .setName("后台保活").setShowBadge(false).setVibrationEnabled(false).build())
+        notificationManager.deleteNotificationChannel("scheduled_keep_alive")
         val chatCompletedChannel = NotificationChannelCompat
             .Builder(
                 CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
@@ -183,15 +183,15 @@ class RikkaHubApp : Application() {
             .build()
         notificationManager.createNotificationChannel(chatCompletedChannel)
 
-        val chatLiveUpdateChannel = NotificationChannelCompat
+        val chatOngoingChannel = NotificationChannelCompat
             .Builder(
-                CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID,
+                CHAT_ONGOING_NOTIFICATION_CHANNEL_ID,
                 NotificationManagerCompat.IMPORTANCE_LOW
             )
-            .setName(getString(R.string.notification_channel_chat_live_update))
+            .setName(getString(R.string.notification_channel_chat_ongoing))
             .setVibrationEnabled(false)
             .build()
-        notificationManager.createNotificationChannel(chatLiveUpdateChannel)
+        notificationManager.createNotificationChannel(chatOngoingChannel)
 
     }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -44,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,16 +56,25 @@ import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.Clock01
 import me.rerere.hugeicons.stroke.Repeat
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.db.entity.ScheduledTaskMode
+import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.ai.core.MessageRole
 import me.rerere.rikkahub.data.db.entity.ScheduleType
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.ai.AssistantPickerSheet
+import me.rerere.rikkahub.ui.components.ai.ModelSelector
 import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.utils.SystemPermissions
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -83,6 +94,7 @@ fun ScheduledTaskEditPage(
     defaultAssistantId: String? = null,
     vm: ScheduledTasksVM = koinViewModel(),
 ) {
+    val context = LocalContext.current
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
     val error by vm.error.collectAsStateWithLifecycle()
     val settingsStore: SettingsStore = koinInject()
@@ -104,6 +116,20 @@ fun ScheduledTaskEditPage(
                 ?: settings.assistantId
         )
     }
+    val conversationRepo: ConversationRepository = koinInject()
+    var mode by remember(existing?.id) { mutableStateOf(existing?.mode ?: "NEW_CHAT") }
+    var targetConversationId by remember(existing?.id) { mutableStateOf(existing?.targetConversationId) }
+    var targetUserMessageId by remember(existing?.id) { mutableStateOf(existing?.targetUserMessageId) }
+    var modelOverrideId by remember(existing?.id) { mutableStateOf(existing?.modelOverrideId) }
+    var notify by remember(existing?.id) { mutableStateOf(existing?.notify ?: true) }
+    var showPreview by remember(existing?.id) { mutableStateOf(existing?.showPreview ?: true) }
+    var picker by remember { mutableStateOf<String?>(null) }
+    val conversationFlow = remember(assistantId) { conversationRepo.getConversationsOfAssistant(assistantId) }
+    val conversations by conversationFlow.collectAsStateWithLifecycle(emptyList())
+    var targetConversation by remember { mutableStateOf<Conversation?>(null) }
+    LaunchedEffect(targetConversationId) {
+        targetConversation = targetConversationId?.let { runCatching { conversationRepo.getConversationById(Uuid.parse(it)) }.getOrNull() }
+    }
     var scheduleType by remember(existing?.id) {
         mutableStateOf(
             existing?.scheduleType?.let { runCatching { ScheduleType.valueOf(it) }.getOrNull() }
@@ -121,9 +147,15 @@ fun ScheduledTaskEditPage(
     var triggerAt by remember(existing?.id) {
         mutableLongStateOf(existing?.triggerAt ?: ScheduledTasksVM.defaultTriggerAt())
     }
+    var weekdaysMask by remember(existing?.id) { mutableIntStateOf(existing?.weekdaysMask ?: 0x1f) }
+    var startDate by remember(existing?.id) { mutableStateOf(existing?.startDate) }
+    var endDate by remember(existing?.id) { mutableStateOf(existing?.endDate) }
+    // Enable/disable is managed on the task list; editing must preserve its current state.
+    val enabled = existing?.enabled ?: SystemPermissions.canScheduleExactAlarms(context)
 
     var showTimePicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var dateTarget by remember { mutableStateOf("once") }
     var showAssistantPicker by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     LaunchedEffect(error) { if (error != null) saving = false }
@@ -161,6 +193,37 @@ fun ScheduledTaskEditPage(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
+                Text("执行内容", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ScheduledTaskMode.entries.forEach { value ->
+                        FilterChip(selected = mode == value.name, onClick = { mode = value.name }, label = { Text(taskModeText(value.name)) })
+                    }
+                }
+                if (mode != "NEW_CHAT") {
+                    TextButton(onClick = { picker = "conversation" }) {
+                        Text("目标会话：${conversations.find { it.id.toString() == targetConversationId }?.title ?: "请选择"}")
+                    }
+                    if (mode == "REGENERATE") {
+                        TextButton(onClick = { picker = "message" }, enabled = targetConversation != null) {
+                            Text("用户消息：${targetConversation?.currentMessages?.find { it.id.toString() == targetUserMessageId }?.toText()?.take(60) ?: "请选择"}")
+                        }
+                        Text("复制截至所选用户消息的上下文，在新会话生成。", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("本次模型", modifier = Modifier.weight(1f))
+                    ModelSelector(
+                        modelId = modelOverrideId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
+                        providers = settings.providers,
+                        type = ModelType.CHAT,
+                        allowClear = true,
+                        onSelect = { model: Model ->
+                            modelOverrideId = model.takeIf { it.modelId.isNotBlank() }?.id?.toString()
+                        },
+                    )
+                }
+            }
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = name,
@@ -171,7 +234,7 @@ fun ScheduledTaskEditPage(
                         modifier = Modifier.fillMaxWidth(),
                     )
 
-                    OutlinedTextField(
+                    if (mode != "REGENERATE") OutlinedTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
                         label = { Text(stringResource(R.string.automation_edit_prompt)) },
@@ -190,9 +253,8 @@ fun ScheduledTaskEditPage(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    // 只有设置中新建可以选助手：
-                    // 助手页进入时已限定归属，编辑已有任务也不允许转移归属
-                    val canChooseAssistant = taskId == null && defaultAssistantId == null
+                    // 从助手页进入时助手范围固定；从总任务页进入时新建和编辑都可切换助手。
+                    val canChooseAssistant = defaultAssistantId == null
                     Surface(
                         onClick = { if (canChooseAssistant) showAssistantPicker = !showAssistantPicker },
                         shape = RoundedCornerShape(16.dp),
@@ -232,49 +294,17 @@ fun ScheduledTaskEditPage(
                         }
                     }
                     if (canChooseAssistant && showAssistantPicker) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            settings.assistants.forEach { assistant ->
-                                val selected = assistant.id == assistantId
-                                Surface(
-                                    onClick = {
-                                        assistantId = assistant.id
-                                        showAssistantPicker = false
-                                    },
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = if (selected) {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                    } else {
-                                        CustomColors.cardColorsOnSurfaceContainer.containerColor
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    ) {
-                                        UIAvatar(
-                                            name = assistant.name.ifBlank {
-                                                stringResource(R.string.assistant_page_default_assistant)
-                                            },
-                                            value = assistant.avatar,
-                                            modifier = Modifier.size(28.dp),
-                                        )
-                                        Text(
-                                            text = assistant.name.ifBlank {
-                                                stringResource(R.string.assistant_page_default_assistant)
-                                            },
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        AssistantPickerSheet(
+                            settings = settings,
+                            currentAssistant = selectedAssistant,
+                            onAssistantSelected = { assistant ->
+                                assistantId = assistant.id
+                                targetConversationId = null
+                                targetUserMessageId = null
+                                showAssistantPicker = false
+                            },
+                            onDismiss = { showAssistantPicker = false },
+                        )
                     }
                 }
             }
@@ -282,7 +312,7 @@ fun ScheduledTaskEditPage(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = stringResource(R.string.automation_edit_schedule),
+                        text = "时间安排",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -293,7 +323,10 @@ fun ScheduledTaskEditPage(
                         ScheduleType.entries.forEach { type ->
                             FilterChip(
                                 selected = scheduleType == type,
-                                onClick = { scheduleType = type },
+                                onClick = {
+                                    if (type == ScheduleType.WEEKLY && scheduleType != ScheduleType.WEEKLY && existing?.scheduleType != ScheduleType.WEEKLY.name) weekdaysMask = 0x1f
+                                    scheduleType = type
+                                },
                                 label = { Text(scheduleTypeLabel(type)) },
                                 leadingIcon = {
                                     Icon(
@@ -301,6 +334,7 @@ fun ScheduledTaskEditPage(
                                             ScheduleType.ONCE -> HugeIcons.Calendar03
                                             ScheduleType.DAILY -> HugeIcons.Clock01
                                             ScheduleType.INTERVAL -> HugeIcons.Repeat
+                                            ScheduleType.WEEKLY -> HugeIcons.Calendar03
                                         },
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp),
@@ -314,7 +348,7 @@ fun ScheduledTaskEditPage(
                         ScheduleType.ONCE -> {
                             // 日期 + 时间两行
                             Surface(
-                                onClick = { showDatePicker = true },
+                                onClick = { dateTarget = "once"; showDatePicker = true },
                                 shape = RoundedCornerShape(14.dp),
                                 color = CustomColors.cardColorsOnSurfaceContainer.containerColor,
                                 modifier = Modifier.fillMaxWidth(),
@@ -411,6 +445,22 @@ fun ScheduledTaskEditPage(
                             }
                         }
 
+                        ScheduleType.WEEKLY -> {
+                            TextButton(onClick = { weekdaysMask = 0x1f }) { Text("工作日") }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
+                                    FilterChip(selected = weekdaysMask and (1 shl index) != 0,
+                                        onClick = { weekdaysMask = weekdaysMask xor (1 shl index) }, label = { Text(label) })
+                                }
+                            }
+                            Surface(onClick = { showTimePicker = true }, shape = RoundedCornerShape(14.dp),
+                                color = CustomColors.cardColorsOnSurfaceContainer.containerColor, modifier = Modifier.fillMaxWidth()) {
+                                Text("执行时间  %02d:%02d".format(ScheduledTasksVM.minutesToHour(timeOfDayMinutes),
+                                    ScheduledTasksVM.minutesToMinute(timeOfDayMinutes)), modifier = Modifier.padding(14.dp))
+                            }
+                            if (weekdaysMask == 0) Text("请至少选择一天", color = MaterialTheme.colorScheme.error)
+                        }
+
                         ScheduleType.INTERVAL -> {
                             FormItem(
                                 label = { Text(stringResource(R.string.automation_edit_interval)) },
@@ -443,9 +493,33 @@ fun ScheduledTaskEditPage(
                             )
                         }
                     }
+                    if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) {
+                        listOf("start" to startDate, "end" to endDate).forEach { (target, date) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                TextButton(onClick = { dateTarget = target; showDatePicker = true }, modifier = Modifier.weight(1f)) {
+                                    Text("${if (target == "start") "开始日期" else "结束日期"}：${date ?: "不限"}")
+                                }
+                                if (date != null) TextButton(onClick = { if (target == "start") startDate = null else endDate = null }) {
+                                    Text("清除")
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
+            if (existing == null && !enabled) item {
+                Text("未授权精确闹钟，保存后暂不自动执行；可在任务列表立即执行或授权后启用。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (existing?.activeRunId != null) item { Text("当前任务正在执行，取消后才能修改内容。", color = MaterialTheme.colorScheme.error) }
+            item {
+                TextButton(onClick = { picker = "notification" }, modifier = Modifier.fillMaxWidth()) {
+                    Text("通知提醒", modifier = Modifier.weight(1f))
+                    Text(when { !notify -> "不通知"; showPreview -> "显示内容"; else -> "仅显示状态" })
+                    Icon(HugeIcons.ArrowDown01, contentDescription = null, modifier = Modifier.padding(start = 8.dp).size(18.dp))
+                }
+            }
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             item {
                 Button(
@@ -463,6 +537,13 @@ fun ScheduledTaskEditPage(
                                 triggerAt = triggerAt,
                                 intervalMinutes = intervalMinutes,
                                 timeOfDayMinutes = timeOfDayMinutes,
+                                weekdaysMask = weekdaysMask,
+                                startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
+                                endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
+                                enabled = enabled,
+                                mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
+                                targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
+                                modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
                                 onDone = {
                                     // 保存成功后回到任务列表，而不是停留在编辑页
                                     navController.popBackStack()
@@ -478,6 +559,13 @@ fun ScheduledTaskEditPage(
                                     triggerAt = triggerAt,
                                     intervalMinutes = intervalMinutes,
                                     timeOfDayMinutes = timeOfDayMinutes,
+                                    weekdaysMask = weekdaysMask,
+                                    startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
+                                    endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
+                                    enabled = enabled,
+                                    mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
+                                    targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
+                                    modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
                                 ),
                                 onDone = {
                                     navController.popBackStack()
@@ -485,7 +573,7 @@ fun ScheduledTaskEditPage(
                             )
                         }
                     },
-                    enabled = !saving && name.isNotBlank() && prompt.isNotBlank() && (taskId == null || existing != null) && settings.assistants.any { it.id == assistantId } && (scheduleType != ScheduleType.INTERVAL || intervalValid),
+                    enabled = !saving && existing?.activeRunId == null && name.isNotBlank() && (mode == "REGENERATE" || prompt.isNotBlank()) && (mode == "NEW_CHAT" || targetConversationId != null) && (mode != "REGENERATE" || targetUserMessageId != null) && (taskId == null || existing != null) && settings.assistants.any { it.id == assistantId } && (scheduleType != ScheduleType.INTERVAL || intervalValid) && (scheduleType != ScheduleType.WEEKLY || weekdaysMask != 0),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.automation_edit_save))
@@ -494,16 +582,36 @@ fun ScheduledTaskEditPage(
         }
     }
 
+    if (picker != null) {
+        val choices = when (picker) {
+            "conversation" -> conversations.map { it.id.toString() to it.title.ifBlank { "未命名会话" } }
+            "message" -> targetConversation?.currentMessages.orEmpty().filter { it.role == MessageRole.USER }.map { it.id.toString() to it.toText().take(100).ifBlank { "附件消息" } }
+            "notification" -> listOf("off" to "不通知", "status" to "仅显示状态", "preview" to "显示内容")
+            else -> emptyList()
+        }
+        TaskChoiceDialog("选择${when(picker) { "conversation" -> "会话"; "message" -> "用户消息"; "notification" -> "通知提醒"; else -> "模型" }}", choices, { id ->
+            when (picker) {
+                "conversation" -> { targetConversationId = id; targetUserMessageId = null }
+                "message" -> targetUserMessageId = id
+                "notification" -> {
+                    notify = id != "off"
+                    if (notify) showPreview = id == "preview"
+                }
+                else -> Unit
+            }
+            picker = null
+        }, { picker = null })
+    }
     if (showTimePicker) {
         // 复用 M3 TimePicker 弹窗；已有任务可能同时含日期与时刻
-        val initialHour = if (scheduleType == ScheduleType.DAILY) {
+        val initialHour = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) {
             ScheduledTasksVM.minutesToHour(timeOfDayMinutes)
         } else {
             remember(triggerAt) {
                 Calendar.getInstance().apply { timeInMillis = triggerAt }.get(Calendar.HOUR_OF_DAY)
             }
         }
-        val initialMinute = if (scheduleType == ScheduleType.DAILY) {
+        val initialMinute = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) {
             ScheduledTasksVM.minutesToMinute(timeOfDayMinutes)
         } else {
             remember(triggerAt) {
@@ -520,7 +628,7 @@ fun ScheduledTaskEditPage(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (scheduleType == ScheduleType.DAILY) {
+                        if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) {
                             timeOfDayMinutes = ScheduledTasksVM.timeOfDayToMinutes(
                                 timeState.hour, timeState.minute
                             )
@@ -549,7 +657,11 @@ fun ScheduledTaskEditPage(
 
     if (showDatePicker) {
         val dateState = rememberDatePickerState(
-            initialSelectedDateMillis = java.time.Instant.ofEpochMilli(triggerAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+            initialSelectedDateMillis = (when (dateTarget) {
+                "start" -> startDate?.let(java.time.LocalDate::parse)
+                "end" -> endDate?.let(java.time.LocalDate::parse)
+                else -> java.time.Instant.ofEpochMilli(triggerAt).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            } ?: java.time.LocalDate.now()).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
         )
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -560,8 +672,12 @@ fun ScheduledTaskEditPage(
                             // 保留原有时刻，只替换日期部分
                             val old = Calendar.getInstance().apply { timeInMillis = triggerAt }
                             val date = java.time.Instant.ofEpochMilli(selected).atZone(java.time.ZoneOffset.UTC).toLocalDate()
-                            triggerAt = date.atTime(old.get(Calendar.HOUR_OF_DAY), old.get(Calendar.MINUTE))
-                                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            when (dateTarget) {
+                                "start" -> startDate = date.toString()
+                                "end" -> endDate = date.toString()
+                                else -> triggerAt = date.atTime(old.get(Calendar.HOUR_OF_DAY), old.get(Calendar.MINUTE))
+                                    .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                            }
                         }
                         showDatePicker = false
                     }
@@ -581,13 +697,12 @@ fun ScheduledTaskEditPage(
 }
 
 @Composable
-private fun scheduleTypeLabel(type: ScheduleType): String = stringResource(
-    when (type) {
-        ScheduleType.ONCE -> R.string.automation_edit_type_once
-        ScheduleType.DAILY -> R.string.automation_edit_type_daily
-        ScheduleType.INTERVAL -> R.string.automation_edit_type_interval
-    }
-)
+private fun scheduleTypeLabel(type: ScheduleType): String = when (type) {
+    ScheduleType.ONCE -> stringResource(R.string.automation_edit_type_once)
+    ScheduleType.DAILY -> stringResource(R.string.automation_edit_type_daily)
+    ScheduleType.INTERVAL -> stringResource(R.string.automation_edit_type_interval)
+    ScheduleType.WEEKLY -> "每周"
+}
 
 @Composable
 private fun intervalLabel(minutes: Int): String = when (minutes) {

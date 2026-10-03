@@ -21,7 +21,6 @@ import me.rerere.tts.provider.TTSManager
 import org.koin.dsl.module
 
 val appModule = module {
-    single(createdAtStart = true) { me.rerere.rikkahub.service.KeepAliveController(get(), get(), get()) }
     single<Json> { JsonInstant }
 
     single {
@@ -70,7 +69,6 @@ val appModule = module {
             context = get(),
             appScope = get(),
             eventBus = get(),
-            settingsStore = get(),
         )
     }
 

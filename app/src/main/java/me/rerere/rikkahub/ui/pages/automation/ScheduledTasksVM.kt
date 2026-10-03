@@ -17,7 +17,7 @@ import kotlin.uuid.Uuid
 /**
  * 定时任务页 ViewModel。
  *
- * 列表来自 Room Flow（实时）；写操作全部经 Repository（内部同步刷新 WorkManager 调度）。
+ * 列表来自 Room Flow（实时）；写操作全部经 Repository（内部同步刷新精确闹钟）。
  * [assistantFilter] 非空时只展示该助手的任务（从助手页进入的场景）。
  */
 class ScheduledTasksVM(
@@ -45,6 +45,16 @@ class ScheduledTasksVM(
         triggerAt: Long,
         intervalMinutes: Int,
         timeOfDayMinutes: Int,
+        weekdaysMask: Int = 0x7f,
+        startDate: String? = null,
+        endDate: String? = null,
+        enabled: Boolean = true,
+        mode: String = "NEW_CHAT",
+        targetConversationId: String? = null,
+        targetUserMessageId: String? = null,
+        modelOverrideId: String? = null,
+        notify: Boolean = true,
+        showPreview: Boolean = true,
         onDone: () -> Unit = {},
     ) {
         if (creating) return
@@ -62,7 +72,12 @@ class ScheduledTasksVM(
                         triggerAt = triggerAt,
                         intervalMinutes = intervalMinutes,
                         timeOfDayMinutes = timeOfDayMinutes,
-                        enabled = true,
+                        weekdaysMask = weekdaysMask,
+                        startDate = startDate,
+                        endDate = endDate,
+                        enabled = enabled,
+                        mode = mode, targetConversationId = targetConversationId, targetUserMessageId = targetUserMessageId,
+                        modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
                         revision = Uuid.random().toString(),
                         createdAt = now,
                         updatedAt = now,
@@ -83,6 +98,14 @@ class ScheduledTasksVM(
         }
     }
 
+    fun historyFlow(id: String) = repository.historyFlow(id)
+    fun runNow(task: ScheduledTaskEntity) {
+        viewModelScope.launch { runCatching { repository.runNow(task.id) }.onFailure { error.value = it.message } }
+    }
+    fun cancelRun(task: ScheduledTaskEntity) {
+        viewModelScope.launch { runCatching { repository.cancelRun(task.id) }.onFailure { error.value = it.message } }
+    }
+
     fun delete(task: ScheduledTaskEntity) {
         viewModelScope.launch { runCatching { repository.delete(task) }.onFailure { error.value = it.message } }
     }
@@ -93,6 +116,7 @@ class ScheduledTasksVM(
 
     /** 下一次触发时间的可读文本（含校验） */
     fun nextTriggerText(task: ScheduledTaskEntity): String {
+        if (task.enabled && !repository.hasExactAlarmPermission()) return "待授权精确闹钟"
         val next = repository.nextTriggerAt(task) ?: return ""
         val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
         return fmt.format(java.util.Date(next))

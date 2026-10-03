@@ -207,30 +207,116 @@ class ChatService(
     private val scheduledFailures = java.util.concurrent.ConcurrentHashMap<Uuid, Throwable>()
     private val scheduledWorkerConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
 
-    suspend fun startScheduledConversation(task: ScheduledTaskEntity, conversationId: Uuid): Deferred<String> {
-        val settings = settingsStore.settingsFlowRaw.first()
-        val assistant = settings.getAssistantById(Uuid.parse(task.assistantId)) ?: error("任务所属助手已删除")
-        val completion = CompletableDeferred<String>()
-        scheduledCompletions[conversationId] = completion
-        scheduledWorkerConversations.add(conversationId)
-        val conversation = Conversation.ofId(conversationId, assistant.id, newConversation = true)
-            .copy(title = task.name).updateCurrentMessages(assistant.presetMessages)
-        val session = sessionManager.getOrCreate(conversationId)
-        session.updateConversation(conversation)
-        conversationRepo.insertConversation(conversation)
-        scheduledTaskRepository.attachConversation(task)
-        sendMessage(conversationId, listOf(UIMessagePart.Text(task.prompt)))
-        return completion
+    private val scheduledReservations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+    private val scheduledRunOwners = java.util.concurrent.ConcurrentHashMap<Uuid, String>()
+    private val cancellingScheduled = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+    private val finishingScheduled = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+
+    init {
+        scheduledTaskRepository.stopConversation = { id, runId -> cancelScheduledConversation(Uuid.parse(id), runId) }
+
     }
 
-    fun releaseScheduledWorker(conversationId: Uuid) {
-        scheduledWorkerConversations.remove(conversationId)
-        scheduledCompletions.remove(conversationId)
+    private suspend fun cancelScheduledConversation(id: Uuid, runId: String) {
+        cancellingScheduled.add(id)
+        try {
+            val persisted = conversationRepo.getConversationById(id)
+            val session = sessionManager.getOrCreate(id)
+            if (persisted != null) session.initialize { persisted }
+            val owner = scheduledTaskRepository.getActiveByConversation(id.toString())
+            if (owner?.activeRunId != runId) return
+            // Restored pending approvals do not have an in-memory owner yet.
+            if (session.getJob() == null && owner.lastRunStatus == "WAITING_APPROVAL") scheduledRunOwners.putIfAbsent(id, runId)
+            val jobs = synchronized(session) {
+                if (scheduledRunOwners[id] != runId) emptyList() else {
+                    session.messageQueue.pause()
+                    session.cancelJobs()
+                }
+            }
+            jobs.forEach { it.join() }
+            if (session.getJob() == null) finishInterruptedPendingTools(id)
+        } finally {
+            cancellingScheduled.remove(id)
+            dispatchNextQueuedMessage(id)
+        }
+    }
+
+    suspend fun startScheduledConversation(task: ScheduledTaskEntity, conversationId: Uuid): Deferred<String>? {
+        val settings = settingsStore.settingsFlowRaw.first()
+        val assistant = settings.getAssistantById(Uuid.parse(task.assistantId)) ?: error("任务所属助手已删除")
+        val mode = me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.valueOf(task.mode)
+        val sourceId = if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT) null
+            else Uuid.parse(task.targetConversationId ?: error("目标会话未设置"))
+        val source = sourceId?.let { id ->
+            val session = sessionManager.getOrCreate(id)
+            session.initialize { conversationRepo.getConversationById(id) ?: error("目标会话已删除") }
+            require(session.state.value.assistantId == assistant.id) { "目标会话不属于任务助手" }
+            if (scheduledTaskRepository.getActiveByConversation(id.toString()) != null) return null
+            if (!session.reserveForScheduledTask(scheduledReservations, finishingScheduled + cancellingScheduled)) return null
+            session.state.value
+        }
+        var destinationId: Uuid? = null
+        var started = false
+        try {
+            val modelId = task.modelOverrideId?.let(Uuid::parse) ?: source?.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
+            require(settings.findModelById(modelId) != null) { "任务模型已删除或未配置" }
+            assistant.workspaceId?.let { workspaceId ->
+                val workspace = workspaceRepository.getById(workspaceId.toString()) ?: error("任务工作区已删除")
+                require(workspace.shellStatus != "BROKEN") { "任务工作区不可用" }
+            }
+            val conversation = when (mode) {
+                me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT ->
+                    Conversation.ofId(conversationId, assistant.id, newConversation = true)
+                        .copy(title = task.name).updateCurrentMessages(assistant.presetMessages)
+                me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP -> source!!
+                me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.REGENERATE -> {
+                    val messageId = Uuid.parse(task.targetUserMessageId ?: error("目标用户消息未设置"))
+                    require(source!!.currentMessages.any { it.id == messageId && it.role == MessageRole.USER }) { "目标用户消息已删除或分支已改变" }
+                    forkConversationAtMessage(source.id, messageId)
+                }
+            }
+            destinationId = conversation.id
+            val session = sessionManager.getOrCreate(conversation.id)
+            if (sourceId != conversation.id) scheduledReservations.add(conversation.id)
+            if (!scheduledTaskRepository.bindConversation(task, conversation.id.toString())) return null
+            val completion = CompletableDeferred<String>()
+            scheduledRunOwners[conversation.id] = task.activeRunId!!
+            scheduledCompletions[conversation.id] = completion
+            scheduledWorkerConversations.add(conversation.id)
+            session.updateConversation(conversation)
+            if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT) conversationRepo.insertConversation(conversation)
+            synchronized(session) {
+                if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.REGENERATE) {
+                    regenerateAtMessage(conversation.id, conversation.currentMessages.last { it.role == MessageRole.USER })
+                } else {
+                    sendQueuedMessage(session, QueuedMessage(parts = listOf(UIMessagePart.Text(task.prompt))))
+                }
+            }
+            started = true
+            return completion
+        } finally {
+            if (!started) destinationId?.let { id ->
+                if (scheduledRunOwners.remove(id, task.activeRunId)) {
+                    scheduledWorkerConversations.remove(id)
+                    scheduledCompletions.remove(id)
+                }
+            }
+            sourceId?.let { scheduledReservations.remove(it); dispatchNextQueuedMessage(it) }
+            destinationId?.let { scheduledReservations.remove(it) }
+        }
+    }
+
+    fun releaseScheduledWorker(conversationId: Uuid, completion: Deferred<String>? = null) {
+        if (completion == null || scheduledCompletions[conversationId] === completion) {
+            scheduledWorkerConversations.remove(conversationId)
+            scheduledCompletions.remove(conversationId)
+        }
     }
 
     private suspend fun finishScheduledSession(session: ConversationSession, failure: Throwable?, conversation: Conversation) {
         val task = scheduledTaskRepository.getActiveByConversation(session.id.toString()) ?: return
         val status = when {
+            failure is kotlinx.coroutines.TimeoutCancellationException -> ScheduledTaskRunStatus.FAILED
             failure is CancellationException -> ScheduledTaskRunStatus.CANCELLED
             failure != null -> ScheduledTaskRunStatus.FAILED
             conversation.currentMessages.any { it.parts.any { part -> part is UIMessagePart.Tool && part.isPending } } ->
@@ -238,13 +324,16 @@ class ChatService(
             else -> ScheduledTaskRunStatus.SUCCESS
         }
         val error = failure?.message.orEmpty()
-        if (scheduledTaskRepository.finish(task, status, error)) {
+        if (status == ScheduledTaskRunStatus.FAILED) Log.e(TAG, error.ifBlank { "任务执行失败" }, failure)
+        if (scheduledTaskRepository.finish(task, status, error, conversation.currentMessages.lastOrNull()?.toText().orEmpty())) {
             if (status.name != task.lastRunStatus || status.name != "WAITING_APPROVAL") {
                 appEventBus.emit(AppEvent.ScheduledTaskEnded(session.id, task.name, status.name,
-                    error.ifBlank { conversation.currentMessages.lastOrNull()?.toText().orEmpty().take(150) }))
+                    error.ifBlank { conversation.currentMessages.lastOrNull()?.toText().orEmpty().take(150) },
+                    task.id, task.activeRunId.orEmpty(), task.notify, task.showPreview))
             }
         }
         if (status == ScheduledTaskRunStatus.WAITING_APPROVAL) scheduledWorkerConversations.remove(session.id)
+        else scheduledRunOwners.remove(session.id, task.activeRunId)
         scheduledCompletions[session.id]?.complete(status.name)
     }
 
@@ -299,13 +388,16 @@ class ChatService(
             }) {
             session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
         }
-        appScope.launch { dispatchNextQueuedMessage(session.id) }
+        finishingScheduled.add(session.id)
         appScope.launch {
             try { finishScheduledSession(session, scheduledFailure, completedConversation) }
             catch (e: Exception) {
                 scheduledCompletions[session.id]?.completeExceptionally(e)
                 Log.e(TAG, "Unable to persist scheduled result", e)
             }
+            finishingScheduled.remove(session.id)
+            dispatchNextQueuedMessage(session.id)
+            scheduledTaskRepository.requestDispatch()
             appEventBus.emit(AppEvent.ChatTurnFinished(session.id))
         }
     }
@@ -336,7 +428,9 @@ class ChatService(
         block: suspend () -> Unit,
     ): Job {
         if (!keepAliveInBackground || conversationId in scheduledWorkerConversations) {
-            return appScope.launch(start = CoroutineStart.LAZY) { block() }
+            return appScope.launch(start = CoroutineStart.LAZY) {
+                block()
+            }
         }
 
         return appScope.launch(start = CoroutineStart.LAZY) {
@@ -504,10 +598,13 @@ class ChatService(
         val session = sessionManager.get(conversationId) ?: return null
         synchronized(session) {
             // A pending tool approval is still part of the current turn.
-            if (session.getJob() != null || session.state.value.currentMessages.any { message ->
+            if (conversationId in cancellingScheduled || conversationId in scheduledReservations || conversationId in finishingScheduled || session.getJob() != null || session.state.value.currentMessages.any { message ->
                     message.parts.any { it is UIMessagePart.Tool && it.isPending }
                 }) return null
-            val next = session.messageQueue.takeNext() ?: return null
+            val next = session.messageQueue.takeNext() ?: run {
+                if (session.messageQueue.state.value.messages.isEmpty()) appScope.launch { scheduledTaskRepository.requestDispatch() }
+                return null
+            }
             session.submittingMessage = next
             return sendQueuedMessage(session, next)
         }
@@ -585,14 +682,15 @@ class ChatService(
                         }
                     } ?: false
                     // Compaction runs before history insertion; stopping here must not discard typed input.
-                    if (!inputPersisted && !inputWasSaved) {
+                    if (!inputPersisted && !inputWasSaved && conversationId !in scheduledWorkerConversations &&
+                        scheduledTaskRepository.getActiveByConversation(conversationId.toString()) == null) {
                         session.messageQueue.requeueFront(queued)
                         session.messageQueue.pause()
                     }
                     throw e
                 }
                 if (e is ContextCompactionException) {
-                    session.messageQueue.requeueFront(queued)
+                    if (conversationId !in scheduledWorkerConversations && scheduledTaskRepository.getActiveByConversation(conversationId.toString()) == null) session.messageQueue.requeueFront(queued)
                     session.messageQueue.pause()
                     addError(
                         e,
@@ -674,6 +772,7 @@ class ChatService(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 session.messageQueue.pause()
+                if (conversationId in scheduledWorkerConversations) scheduledFailures[conversationId] = e
                 addError(e, conversationId, title = context.getString(R.string.error_title_regenerate_message))
             }
         }
@@ -760,7 +859,16 @@ class ChatService(
 
     // ---- 处理消息补全 ----
 
-    private suspend fun handleMessageComplete(
+    private suspend fun handleMessageComplete(conversationId: Uuid, messageRange: ClosedRange<Int>? = null) {
+        val task = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
+        task?.activeRunId?.let { scheduledRunOwners[conversationId] = it }
+        if (task == null) handleMessageCompleteUnbounded(conversationId, messageRange)
+        else kotlinx.coroutines.withTimeout(scheduledTaskRepository.remainingGenerationMs(task)) {
+            handleMessageCompleteUnbounded(conversationId, messageRange)
+        }
+    }
+
+    private suspend fun handleMessageCompleteUnbounded(
         conversationId: Uuid,
         messageRange: ClosedRange<Int>? = null
     ) {
@@ -770,7 +878,7 @@ class ChatService(
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: if (scheduledTask != null) error("任务所属助手已删除") else settings.getCurrentAssistant()
         val model = settings.findModelById(
-            initialConversation.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
+            scheduledTask?.modelOverrideId?.let(Uuid::parse) ?: initialConversation.modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
         )
             ?: throw IllegalStateException("No chat model selected")
         val requestModel = imageToolChatModel(model, LocalToolOption.ImageGeneration in assistant.localTools)
@@ -789,7 +897,7 @@ class ChatService(
 
             // memory tool
             if (!model.abilities.contains(ModelAbility.TOOL)) {
-                if (useExternalWebSearch || mcpManager.getAllAvailableTools().isNotEmpty() ||
+                if (useExternalWebSearch || mcpManager.getAllAvailableTools(assistant).isNotEmpty() ||
                     LocalToolOption.ImageGeneration in assistant.localTools) {
                     addError(
                         IllegalStateException(context.getString(R.string.tools_warning)),
@@ -865,7 +973,7 @@ class ChatService(
                     saveConversation(conversationId, conversation)
                 }
 
-                // 生成结束：取消 Live Update 通知，后台时发送完成通知
+                // 生成结束：后台时发送完成通知
                 appEventBus.emit(
                     AppEvent.ChatGenerationEnded(
                         conversationId = conversationId,
@@ -882,19 +990,10 @@ class ChatService(
                             .updateRequestWindowMessages(requestWindow, chunk.messages)
                         updateConversation(conversationId, updatedConversation)
 
-                        // 通知等边缘副作用由 ChatNotificationManager 消费；
-                        // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
-                        chunk.messages.lastOrNull()?.let { lastMessage ->
-                            appEventBus.tryEmit(
-                                AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
-                            )
-                        }
                     }
                 }
             }
         }.onFailure {
-            // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
-            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, scheduledTask = scheduledTask != null))
             if (scheduledTask != null) scheduledFailures[conversationId] = it
             if (it is CancellationException) throw it
             sessionManager.get(conversationId)?.messageQueue?.pause()
@@ -1805,8 +1904,8 @@ class ChatService(
             session.messageQueue.pause()
             session.cancelJobs()
         }
-        if (jobs.isEmpty()) return
         jobs.forEach { it.join() }
         finishInterruptedPendingTools(conversationId)
+        scheduledTaskRepository.requestDispatch()
     }
 }

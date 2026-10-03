@@ -3,7 +3,7 @@ name: Release APKs
 on:
   push:
     tags:
-      - '2.5.*'
+      - '2.6.*'
 
 permissions:
   contents: write
@@ -101,7 +101,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          previous_tag=$(git tag --list '2.5.*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -n 1 || true)
+          previous_tag=$(git tag --list '2.*' --sort=-v:refname | grep -Fxv "$GITHUB_REF_NAME" | head -n 1 || true)
           {
             echo "## RikkaPlus $GITHUB_REF_NAME"
             echo

@@ -247,7 +247,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(onClick = { navController.navigate(Screen.ScheduledTasks()) },
                         headlineContent = { Text("定时任务") }, supportingContent = { Text("按计划让助手执行提示词") })
                     item(onClick = { navController.navigate(Screen.SettingPermissions) },
-                        headlineContent = { Text("权限管理") }, supportingContent = { Text("通知、电池优化与后台保活") })
+                        headlineContent = { Text("后台运行与通知") }, supportingContent = { Text("任务运行、系统授权与通知状态") })
                 }
             }
 

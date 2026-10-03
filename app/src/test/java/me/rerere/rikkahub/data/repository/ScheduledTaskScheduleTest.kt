@@ -36,11 +36,12 @@ class ScheduledTaskScheduleTest {
         assertEquals(now + 3600000L, ScheduledTaskSchedule.nextOnStartup(stored, now, ZoneId.of("Asia/Shanghai")))
         assertEquals(now + 9 * 3600000L, ScheduledTaskSchedule.nextOnStartup(stored, now, ZoneId.of("UTC")))
     }
-    @Test fun startupRetainsOnlyOneOverdueSlotAndKeepsDisabledTasksUnscheduled() {
+    @Test fun startupKeepsDeliveredSlotClaimableUntilAlarmReceiverRuns() {
         val overdue = task(ScheduleType.INTERVAL).copy(nextRunAt = now - 10 * 900000L)
         assertEquals(overdue.nextRunAt, ScheduledTaskSchedule.nextOnStartup(overdue, now))
         assertNull(ScheduledTaskSchedule.nextOnStartup(overdue.copy(enabled = false), now))
         assertEquals(now + 900000L, ScheduledTaskSchedule.nextOnStartup(overdue.copy(nextRunAt = null), now))
+        assertEquals(now, ScheduledTaskSchedule.nextOnStartup(task(ScheduleType.ONCE), now))
     }
     @Test fun longRunsSkipElapsedPeriodsAndFutureSlotsRemainUnchanged() {
         val running = task(ScheduleType.INTERVAL).copy(nextRunAt = now + 900000L)
@@ -51,6 +52,22 @@ class ScheduledTaskScheduleTest {
     @Test fun onceHasNoNextSlotAfterItsTrigger() {
         assertNull(ScheduledTaskSchedule.next(task(ScheduleType.ONCE), now))
         assertEquals(now + 1, ScheduledTaskSchedule.next(task(ScheduleType.ONCE).copy(triggerAt = now + 1), now))
+    }
+    @Test fun weeklyHonorsSelectedDaysAndInclusiveDateBounds() {
+        val weekly = task(ScheduleType.WEEKLY).copy(weekdaysMask = 1 shl 0)
+        val shanghai = ZoneId.of("Asia/Shanghai")
+        assertEquals(Instant.parse("2026-10-05T01:00:00Z").toEpochMilli(), ScheduledTaskSchedule.next(weekly, now, shanghai))
+        val bounded = weekly.copy(weekdaysMask = 1 shl 2, startDate = "2026-10-07", endDate = "2026-10-07")
+        assertEquals(Instant.parse("2026-10-07T01:00:00Z").toEpochMilli(), ScheduledTaskSchedule.next(bounded, now, shanghai))
+        assertNull(ScheduledTaskSchedule.next(bounded.copy(endDate = "2026-10-06"), now, shanghai))
+    }
+    @Test fun overlapUsesEarlierOffsetAndDailyRangeCanExpire() {
+        val before = Instant.parse("2026-11-01T04:00:00Z").toEpochMilli()
+        val weekly = task(ScheduleType.WEEKLY).copy(timeOfDayMinutes = 90, weekdaysMask = 1 shl 6)
+        assertEquals(Instant.parse("2026-11-01T05:30:00Z").toEpochMilli(),
+            ScheduledTaskSchedule.next(weekly, before, ZoneId.of("America/New_York")))
+        val daily = task().copy(endDate = "2026-10-01")
+        assertNull(ScheduledTaskSchedule.next(daily, now, ZoneId.of("Asia/Shanghai")))
     }
     @Test fun scheduledOnceIsConsumedButItsResultIsRunning() {
         val run = claim(task(ScheduleType.ONCE)).run!!
@@ -82,8 +99,18 @@ class ScheduledTaskScheduleTest {
         assertEquals("WAITING_APPROVAL", decision.updated!!.lastRunStatus)
         assertEquals(now + 900000L, decision.updated!!.nextRunAt)
     }
+    @Test fun finalBoundedOccurrenceRunsAndThenDisablesTheSchedule() {
+        val due = Instant.parse("2026-10-02T23:00:00Z").toEpochMilli()
+        val finalDay = task(ScheduleType.WEEKLY).copy(weekdaysMask = 1 shl 4,
+            endDate = "2026-10-02", nextRunAt = due)
+        val decision = ScheduledTaskSchedule.claim(finalDay, finalDay.revision, due, "final", "conversation", due)
+        assertNotNull(decision.run)
+        assertFalse(decision.run!!.enabled)
+        assertNull(decision.run!!.nextRunAt)
+    }
     @Test fun nameAndPromptAndScheduleAreValidated() {
-        for (invalid in listOf(task().copy(name = " "), task().copy(prompt = ""), task().copy(timeOfDayMinutes = 1440), task(ScheduleType.INTERVAL).copy(intervalMinutes = 14))) {
+        for (invalid in listOf(task().copy(name = " "), task().copy(prompt = ""), task().copy(timeOfDayMinutes = 1440), task(ScheduleType.INTERVAL).copy(intervalMinutes = 14),
+            task(ScheduleType.WEEKLY).copy(weekdaysMask = 0), task().copy(startDate = "2026-10-03", endDate = "2026-10-02"), task().copy(startDate = "2026-02-30"))) {
             assertThrows(IllegalArgumentException::class.java) { ScheduledTaskSchedule.validate(invalid, now, true) }
         }
         assertThrows(IllegalArgumentException::class.java) { ScheduledTaskSchedule.validate(task(ScheduleType.ONCE), now, true) }

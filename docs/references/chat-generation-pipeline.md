@@ -66,7 +66,7 @@ ChatService.sendMessage()
 
     ▼
 onCompletion（Flow 结束或取消）
-    ├── cancelLiveUpdateNotification()
+    ├── 前台服务释放该生成的占用，最后一个生成结束时移除运行通知
     ├── 对所有消息 finishReasoning()（兜底）
     └── 若 App 不在前台 → sendGenerationDoneNotification()
 

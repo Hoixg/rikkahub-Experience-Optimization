@@ -14,6 +14,23 @@ class ScheduledTaskToolsTest {
         assertEquals(540, parsed.timeOfDayMinutes)
         assertEquals(1440, parsed.intervalMinutes)
     }
+    @Test fun weeklyDefaultsToWeekdaysAndCanClearOneDateWithoutChangingOthers() {
+        val parsed = parseSchedule(args("""{"schedule_type":"WEEKLY","start_date":"2026-10-05","end_date":"2026-10-31"}"""))
+        assertEquals(0x1f, parsed.weekdaysMask)
+        val original = task().copy(scheduleType = "WEEKLY", weekdaysMask = 1 shl 2,
+            startDate = parsed.startDate, endDate = parsed.endDate)
+        val changed = parseSchedule(args("""{"start_date":null,"time_of_day":"10:45"}"""), original)
+        assertNull(changed.startDate)
+        assertEquals("2026-10-31", changed.endDate)
+        assertEquals(original.weekdaysMask, changed.weekdaysMask)
+    }
+    @Test fun invalidWeekdaysAndDateRangesAreRejected() {
+        for (json in listOf("""{"schedule_type":"WEEKLY","weekdays":[]}""", """{"schedule_type":"WEEKLY","weekdays":[0]}""",
+            """{"schedule_type":"WEEKLY","weekdays":[8]}""", """{"schedule_type":"DAILY","weekdays":[1]}""",
+            """{"schedule_type":"DAILY","start_date":"2026-02-30"}""")) {
+            assertThrows(RuntimeException::class.java) { parseSchedule(args(json)) }
+        }
+    }
     @Test fun updatingPromptPreservesOnceTimeWithoutTriggerArgument() {
         val original = task().copy(scheduleType = "ONCE", triggerAt = 123456789L)
         val parsed = parseSchedule(args("""{"schedule_type":"ONCE"}"""), original)
@@ -52,4 +69,15 @@ class ScheduledTaskToolsTest {
         assertThrows(IllegalArgumentException::class.java) { parseSchedule(args("""{"schedule_type":"CRON"}""")) }
         assertThrows(IllegalStateException::class.java) { parseSchedule(args("""{"schedule_type":"ONCE"}""")) }
     }
+    @Test fun changingModeAndTargetClearsObsoleteMessageAndPreservesNotificationSettings() {
+        val firstId = "00000000-0000-0000-0000-000000000001"
+        val secondId = "00000000-0000-0000-0000-000000000002"
+        val original = task().copy(mode = "REGENERATE", targetConversationId = firstId, targetUserMessageId = firstId, notify = false)
+        val changed = applyExecutionFields(original, args("""{"target_conversation_id":"$secondId"}"""))
+        assertNull(changed.targetUserMessageId); assertFalse(changed.notify)
+        val newChat = applyExecutionFields(original, args("""{"mode":"NEW_CHAT","model_override_id":null,"show_preview":false}"""))
+        assertNull(newChat.targetConversationId); assertNull(newChat.targetUserMessageId); assertFalse(newChat.showPreview)
+        assertThrows(IllegalArgumentException::class.java) { applyExecutionFields(original, args("""{"mode":"INVALID"}""")) }
+    }
+
 }

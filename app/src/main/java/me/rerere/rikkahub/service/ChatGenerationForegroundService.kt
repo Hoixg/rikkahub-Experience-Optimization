@@ -13,7 +13,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.AppScope
-import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
+import me.rerere.rikkahub.CHAT_ONGOING_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import org.koin.android.ext.android.inject
@@ -65,6 +65,8 @@ class ChatGenerationForegroundService : Service() {
 
     private val activeGenerations = linkedMapOf<String, String>()
     private var isForeground = false
+    private val serviceScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private val lease by lazy { GenerationWakeLease(this, "chat", serviceScope) }
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
 
@@ -80,11 +82,14 @@ class ChatGenerationForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        lease.close()
+        BackgroundRuntime.service("chat", false)
         activeGenerations.clear()
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
         }
+        serviceScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         super.onDestroy()
     }
 
@@ -106,11 +111,13 @@ class ChatGenerationForegroundService : Service() {
         val generationId = intent.getStringExtra(EXTRA_GENERATION_ID) ?: return stopService()
         val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID) ?: return stopService()
         activeGenerations[generationId] = conversationId
+        lease.update(activeGenerations.size)
         updateForegroundNotification(conversationId)
     }
 
     private fun release(intent: Intent) {
         intent.getStringExtra(EXTRA_GENERATION_ID)?.let(activeGenerations::remove)
+        lease.update(activeGenerations.size)
         if (activeGenerations.isEmpty()) {
             stopService()
         } else {
@@ -132,7 +139,9 @@ class ChatGenerationForegroundService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             isForeground = true
+            BackgroundRuntime.service("chat", true)
         } catch (e: Exception) {
+            lease.close()
             Log.e(TAG, "Failed to enter foreground", e)
             activeGenerations.clear()
             stopSelf()
@@ -140,6 +149,8 @@ class ChatGenerationForegroundService : Service() {
     }
 
     private fun stopService() {
+        lease.close()
+        BackgroundRuntime.service("chat", false)
         if (isForeground) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForeground = false
@@ -148,10 +159,10 @@ class ChatGenerationForegroundService : Service() {
     }
 
     private fun buildNotification(conversationId: String) =
-        NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
+        NotificationCompat.Builder(this, CHAT_ONGOING_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notification_live_update_title))
+            .setContentText(getString(R.string.notification_generation_title))
             .setContentIntent(getConversationPendingIntent(conversationId))
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)

@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.annotation.RequiresPermission
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -27,10 +26,6 @@ class NotificationConfig {
     var visibility: Int = NotificationCompat.VISIBILITY_PRIVATE
     var contentIntent: PendingIntent? = null
     var useBigTextStyle: Boolean = false
-
-    // Live Update 相关
-    var requestPromotedOngoing: Boolean = false
-    var shortCriticalText: String? = null
 
     // 默认通知效果
     var useDefaults: Boolean = false
@@ -106,15 +101,6 @@ object NotificationUtil {
                 setDefaults(NotificationCompat.DEFAULT_ALL)
             }
 
-            // Android 15+ Live Update 支持
-            if (config.requestPromotedOngoing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                setRequestPromotedOngoing(true)
-            }
-
-            // Android 16+ 状态栏 chip 文本
-            if (config.shortCriticalText != null && Build.VERSION.SDK_INT >= 36) {
-                setShortCriticalText(config.shortCriticalText!!)
-            }
         }
     }
 

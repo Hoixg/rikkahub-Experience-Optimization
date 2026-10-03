@@ -25,6 +25,13 @@ object SettingsJsonMigrator {
         return runCatching {
             val root = JsonInstant.parseToJsonElement(settingsJson).jsonObject.toMutableMap()
 
+            // Retired background options must not be restored from old backups.
+            root.remove("keepAwakeEnabled")
+            root.remove("notificationPrivacy")
+            (root["displaySetting"] as? JsonObject)?.let { display ->
+                root["displaySetting"] = JsonObject(display - "enableLiveUpdateNotification" - "enableNotificationOnMessageGeneration")
+            }
+
             // V1: 修复 mcpServers 中全限定类名的 type 字段
             root["mcpServers"]?.let { element ->
                 val migrated = migrateMcpServersJson(JsonInstant.encodeToString(element))
